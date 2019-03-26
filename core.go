@@ -18,7 +18,7 @@ func (apix *ApiX) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx.Writer = w
 	ctx.Request = r
 
-	// handlers
+	// middlewares
 
 	apix.pool.Put(ctx)
 }
