@@ -1,19 +1,21 @@
 package apix
 
-type Handler func(ctx Context, next ...Handler)
+type Handler func(ctx *Context)
+
 
 type routerEntry struct {
-	path string
+	name    string
 	isParam bool
 
-	// TODO: middlewares
-	// TODO: handler
+	// handler
 	subEntries map[string]*routerEntry
 	paramEntry *routerEntry
+	// handlers
+	handlers map[string][]Handler
 }
 
 func (re *routerEntry) match(path string) *routerEntry {
-	if (re.isParam) {
+	if re.isParam {
 		return re.paramEntry
 	}
 
@@ -23,32 +25,46 @@ func (re *routerEntry) match(path string) *routerEntry {
 }
 
 func (re *routerEntry) paramName() string {
-	return re.path
+	return re.name
+}
+
+func (re *routerEntry) mount(method, name string, handler ...Handler) {
+
 }
 
 type Router struct {
-	path string
+	routerEntry
 }
 
-func (r *Router) Use(path string) {
-
+type RouterGroup struct {
+	routerEntry
 }
 
-func (r *Router) Get(path string, handler Handler) {
+func (r *Router) Group() {}
 
-}
+func (r *Router) mountPath(path string) {}
 
-func (r *Router) Post(path string, handler Handler) {
-
-}
-
-func (r *Router) Put(path string, handler Handler) {
+func (r *Router) Use(handlers ...Handler) {
 
 }
 
-func (r *Router) Delete(path string, handler Handler) {
+func (r *Router) Get(path string, handlers ...Handler) {
 
 }
+
+func (r *Router) Post(path string, handlers ...Handler) {
+
+}
+
+func (r *Router) Put(path string, handlers ...Handler) {
+
+}
+
+func (r *Router) Delete(path string, handlers ...Handler) {
+
+}
+
+// TODO: add more http method handler
 
 func (r *Router) match(path string) Handler {
 	return nil
