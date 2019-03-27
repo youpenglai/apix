@@ -1,9 +1,16 @@
 package apix
 
-import "strings"
+import (
+	"strings"
+	"errors"
+)
+
+var (
+	ErrRouterNotFound = errors.New("router not found")
+	ErrMethodNotFound = errors.New("method not found")
+)
 
 type Handler func(ctx *Context)
-
 
 type routerEntry struct {
 	name    string
@@ -30,6 +37,10 @@ func (re *routerEntry) addSubEntry(path string, sub *routerEntry) {
 		return
 	}
 
+	if re.subEntries == nil {
+		re.subEntries = make(map[string]*routerEntry)
+	}
+
 	re.subEntries[path] = sub
 }
 
@@ -41,6 +52,19 @@ func (re *routerEntry) setParamEntry(sub *routerEntry) {
 	re.paramEntry = sub
 }
 
+func (re *routerEntry) setMiddlewares(handlers ...Handler) {
+	if len(handlers) == 0 {
+		return
+	}
+
+	re.middlewares = make([]Handler, len(handlers))
+	copy(re.middlewares, handlers)
+}
+
+func (re *routerEntry) appendMiddlewares(handlers ...Handler) {
+	re.middlewares = append(re.middlewares, handlers...)
+}
+
 func (re *routerEntry) bindMethod(method string, handlers ...Handler) {
 	if len(handlers) == 0 {
 		return
@@ -49,6 +73,9 @@ func (re *routerEntry) bindMethod(method string, handlers ...Handler) {
 	m := strings.ToUpper(method)
 	switch m {
 	case "GET", "PUT", "POST", "DELETE", "OPTIONS", "PATCH", "HEAD":
+		if re.handlers == nil {
+			re.handlers = make(map[string][]Handler)
+		}
 		re.handlers[m] = handlers
 	// unsupported methods or invalid method
 	default:
@@ -60,8 +87,8 @@ func (re *routerEntry) paramName() string {
 	return re.name
 }
 
-func newRouterEntry() *routerEntry {
-	return &routerEntry{}
+func newRouterEntry(name string) *routerEntry {
+	return &routerEntry{name:name}
 }
 
 func (re *routerEntry) mount(method, name string, handler ...Handler) {
@@ -72,24 +99,15 @@ type Router struct {
 	routerEntry
 }
 
-type RouterGroup struct {
-	Router
-	entry *routerEntry
+func (r *Router) Group(path string, handlers ...Handler) *Router {
+	re := r.buildEntries(path)
+	re.setMiddlewares(handlers...)
+
+	// copy router entry to new Router
+	nr := &Router{routerEntry: *re}
+
+	return nr
 }
-
-func NewRouterGroup(groupPath string) *RouterGroup {
-	g := &RouterGroup{}
-
-	g.entry = g.buildEntries(groupPath)
-
-	return g
-}
-
-func (rg *RouterGroup) AddRouter(router *Router) {
-
-}
-
-func (r *Router) Group() {}
 
 func isParam(pathName string) bool {
 	// TODO: check param: :{1}\w
@@ -97,20 +115,23 @@ func isParam(pathName string) bool {
 }
 
 func (r *Router) buildEntries(path string) *routerEntry {
-	parts := strings.Split(path, "/")
+	parts := strings.Split(strings.TrimSpace(path), "/")
 	if len(parts) == 0 {
 		return &r.routerEntry
 	}
 
-	p := &r.routerEntry
+	p := &(r.routerEntry)
 	var newEntry *routerEntry
 	for _, part := range parts {
-		newEntry = newRouterEntry()
-		newEntry.name = part
+		if part == "" {
+			continue
+		}
+
+		newEntry = newRouterEntry(part)
 		if isParam(part) {
-			p.paramEntry = newEntry
+			p.setParamEntry(newEntry)
 		} else {
-			p.subEntries[part] = newEntry
+			p.addSubEntry(part, newEntry)
 		}
 		// next level
 		p = newEntry
@@ -119,32 +140,83 @@ func (r *Router) buildEntries(path string) *routerEntry {
 	return newEntry
 }
 
+// set global handlers
 func (r *Router) Use(handlers ...Handler) {
 	if len(handlers) == 0 {
 		// panic?
 		return
 	}
-	r.middlewares = append(r.middlewares, handlers...)
+	r.appendMiddlewares(handlers...)
 }
 
 func (r *Router) Get(path string, handlers ...Handler) {
-
+	finalEntry := r.buildEntries(path)
+	finalEntry.bindMethod("GET", handlers...)
 }
 
 func (r *Router) Post(path string, handlers ...Handler) {
-
+	finalEntry := r.buildEntries(path)
+	finalEntry.bindMethod("POST", handlers...)
 }
 
 func (r *Router) Put(path string, handlers ...Handler) {
-
+	finalEntry := r.buildEntries(path)
+	finalEntry.bindMethod("PUT", handlers...)
 }
 
 func (r *Router) Delete(path string, handlers ...Handler) {
-
+	finalEntry := r.buildEntries(path)
+	finalEntry.bindMethod("DELETE", handlers...)
 }
 
+func (r *Router) Options(path string, handlers ...Handler) {
+	finalEntry := r.buildEntries(path)
+	finalEntry.bindMethod("OPTIONS", handlers...)
+}
+
+func (r *Router) Patch(path string, handlers ...Handler) {
+	finalEntry := r.buildEntries(path)
+	finalEntry.bindMethod("PATCH", handlers...)
+}
+
+func (r *Router) Head(path string, handlers ...Handler) {
+	finalEntry := r.buildEntries(path)
+	finalEntry.bindMethod("HEAD", handlers...)
+}
 // TODO: add more http method handler
 
-func (r *Router) match(path string) Handler {
-	return nil
+func (r *Router) match(path string, method string) (handlers []Handler, urlParams map[string]string, err error) {
+	parts := strings.Split(path, "/")
+
+	urlParams = make(map[string]string)
+
+	re := &r.routerEntry
+	var exist bool
+	for _, part := range parts {
+		if part == "" {
+			return
+		}
+
+		handlers = append(handlers, re.middlewares...)
+		if re, exist = re.subEntries[part]; exist {
+			continue
+		}
+
+		if re.paramEntry != nil {
+			re = re.paramEntry
+			urlParams[re.name[1:]] = part
+		} else {
+			err = ErrRouterNotFound
+			return
+		}
+	}
+
+	if methodHandlers, exist := re.handlers[method]; !exist {
+		err = ErrMethodNotFound
+		return
+	} else {
+		handlers = append(handlers, methodHandlers...)
+	}
+
+	return
 }
