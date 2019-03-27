@@ -7,7 +7,6 @@ type Handler func(ctx *Context)
 
 type routerEntry struct {
 	name    string
-
 	// handler
 	subEntries map[string]*routerEntry
 	paramEntry *routerEntry
@@ -16,14 +15,45 @@ type routerEntry struct {
 	handlers map[string][]Handler
 }
 
-func (re *routerEntry) match(path string) *routerEntry {
-	if re.isParam {
-		return re.paramEntry
+//func (re *routerEntry) match(path string) *routerEntry {
+//	if re.isParam {
+//		return re.paramEntry
+//	}
+//
+//	entry, _ := re.subEntries[path]
+//
+//	return entry
+//}
+
+func (re *routerEntry) addSubEntry(path string, sub *routerEntry) {
+	if sub == nil {
+		return
 	}
 
-	entry, _ := re.subEntries[path]
+	re.subEntries[path] = sub
+}
 
-	return entry
+func (re *routerEntry) setParamEntry(sub *routerEntry) {
+	if sub == nil {
+		return
+	}
+
+	re.paramEntry = sub
+}
+
+func (re *routerEntry) bindMethod(method string, handlers ...Handler) {
+	if len(handlers) == 0 {
+		return
+	}
+
+	m := strings.ToUpper(method)
+	switch m {
+	case "GET", "PUT", "POST", "DELETE", "OPTIONS", "PATCH", "HEAD":
+		re.handlers[m] = handlers
+	// unsupported methods or invalid method
+	default:
+		panic("invalid http method")
+	}
 }
 
 func (re *routerEntry) paramName() string {
