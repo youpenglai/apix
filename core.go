@@ -5,6 +5,9 @@ import (
 	"sync"
 )
 
+const (
+	ApiXName = "ApiX"
+)
 
 type ApiX struct {
 	Router

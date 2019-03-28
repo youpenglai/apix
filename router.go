@@ -75,7 +75,7 @@ func (re *Router) bindMethod(method string, handlers ...Handler) {
 }
 
 func (re *Router) paramName() string {
-	return re.name
+	return re.name[1:]
 }
 
 func newRouterEntry(name string) *Router {
@@ -186,7 +186,7 @@ func (r *Router) match(path string, method string) (handlers []Handler, urlParam
 			// 并记录下当前参数
 			if re.paramEntry != nil {
 				re = re.paramEntry
-				urlParams[re.name[1:]] = part
+				urlParams[re.paramName()] = part
 			} else {
 				err = ErrRouterNotFound
 				return

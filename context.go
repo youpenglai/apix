@@ -6,6 +6,7 @@ type Context struct {
 	ResponseWriter http.ResponseWriter
 	Request        *http.Request
 
+	Next Handler
 	// TODO: add more
 	writen int
 }
@@ -29,4 +30,8 @@ func (c *Context) Write(data []byte) error {
 
 func (c *Context) WriteString(str string) error {
 	return c.Write([]byte(str))
+}
+
+func (c *Context) SetHeader(name, value string) {
+	c.ResponseWriter.Header().Set(name, value)
 }
