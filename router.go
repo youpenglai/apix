@@ -12,39 +12,30 @@ var (
 
 type Handler func(ctx *Context)
 
-type routerEntry struct {
+type Router struct {
 	name    string
 	// handler
-	subEntries map[string]*routerEntry
-	paramEntry *routerEntry
+	subEntries map[string]*Router
+	paramEntry *Router
 	// middlewares
 	middlewares    []Handler
 	handlers map[string][]Handler
 }
 
-//func (re *routerEntry) match(path string) *routerEntry {
-//	if re.isParam {
-//		return re.paramEntry
-//	}
-//
-//	entry, _ := re.subEntries[path]
-//
-//	return entry
-//}
 
-func (re *routerEntry) addSubEntry(path string, sub *routerEntry) {
+func (re *Router) addSubEntry(path string, sub *Router) {
 	if sub == nil {
 		return
 	}
 
 	if re.subEntries == nil {
-		re.subEntries = make(map[string]*routerEntry)
+		re.subEntries = make(map[string]*Router)
 	}
 
 	re.subEntries[path] = sub
 }
 
-func (re *routerEntry) setParamEntry(sub *routerEntry) {
+func (re *Router) setParamEntry(sub *Router) {
 	if sub == nil {
 		return
 	}
@@ -52,7 +43,7 @@ func (re *routerEntry) setParamEntry(sub *routerEntry) {
 	re.paramEntry = sub
 }
 
-func (re *routerEntry) setMiddlewares(handlers ...Handler) {
+func (re *Router) setMiddlewares(handlers ...Handler) {
 	if len(handlers) == 0 {
 		return
 	}
@@ -61,11 +52,11 @@ func (re *routerEntry) setMiddlewares(handlers ...Handler) {
 	copy(re.middlewares, handlers)
 }
 
-func (re *routerEntry) appendMiddlewares(handlers ...Handler) {
+func (re *Router) appendMiddlewares(handlers ...Handler) {
 	re.middlewares = append(re.middlewares, handlers...)
 }
 
-func (re *routerEntry) bindMethod(method string, handlers ...Handler) {
+func (re *Router) bindMethod(method string, handlers ...Handler) {
 	if len(handlers) == 0 {
 		return
 	}
@@ -83,30 +74,19 @@ func (re *routerEntry) bindMethod(method string, handlers ...Handler) {
 	}
 }
 
-func (re *routerEntry) paramName() string {
+func (re *Router) paramName() string {
 	return re.name
 }
 
-func newRouterEntry(name string) *routerEntry {
-	return &routerEntry{name:name}
-}
-
-func (re *routerEntry) mount(method, name string, handler ...Handler) {
-
-}
-
-type Router struct {
-	routerEntry
+func newRouterEntry(name string) *Router {
+	return &Router{name:name}
 }
 
 func (r *Router) Group(path string, handlers ...Handler) *Router {
 	re := r.buildEntries(path)
 	re.setMiddlewares(handlers...)
 
-	// copy router entry to new Router
-	nr := &Router{routerEntry: *re}
-
-	return nr
+	return re
 }
 
 func isParam(pathName string) bool {
@@ -114,14 +94,14 @@ func isParam(pathName string) bool {
 	return pathName[0] == ':' && len(pathName) > 1
 }
 
-func (r *Router) buildEntries(path string) *routerEntry {
+func (r *Router) buildEntries(path string) *Router {
 	parts := strings.Split(strings.TrimSpace(path), "/")
 	if len(parts) == 0 {
-		return &r.routerEntry
+		return r
 	}
 
-	p := &(r.routerEntry)
-	var newEntry *routerEntry
+	p := r
+	var newEntry *Router
 	for _, part := range parts {
 		if part == "" {
 			continue
@@ -189,31 +169,35 @@ func (r *Router) match(path string, method string) (handlers []Handler, urlParam
 	parts := strings.Split(path, "/")
 
 	urlParams = make(map[string]string)
+	handlers = make([]Handler,0)
 
-	re := &r.routerEntry
+	re := r
 	var exist bool
+	var sub *Router
 	for _, part := range parts {
 		if part == "" {
-			return
-		}
-
-		handlers = append(handlers, re.middlewares...)
-		if re, exist = re.subEntries[part]; exist {
 			continue
 		}
 
-		if re.paramEntry != nil {
-			re = re.paramEntry
-			urlParams[re.name[1:]] = part
+		// add handlers
+		handlers = append(handlers, re.middlewares...)
+		if sub, exist = re.subEntries[part]; !exist {
+			// 如果路径在子项目里面不存在，尝试读取参数入口
+			// 并记录下当前参数
+			if re.paramEntry != nil {
+				re = re.paramEntry
+				urlParams[re.name[1:]] = part
+			} else {
+				err = ErrRouterNotFound
+				return
+			}
 		} else {
-			err = ErrRouterNotFound
-			return
+			re = sub
 		}
 	}
 
-	if methodHandlers, exist := re.handlers[method]; !exist {
+	if methodHandlers, exist := re.handlers[strings.ToUpper(method)]; !exist {
 		err = ErrMethodNotFound
-		return
 	} else {
 		handlers = append(handlers, methodHandlers...)
 	}

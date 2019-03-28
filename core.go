@@ -12,13 +12,17 @@ type ApiX struct {
 	pool *sync.Pool
 }
 
+func (apix *ApiX) handleHTTP(ctx *Context) {
+
+}
+
 func (apix *ApiX) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, _ := apix.pool.Get().(*Context)
 
-	ctx.Writer = w
+	ctx.ResponseWriter = w
 	ctx.Request = r
 
-	// middlewares
+	apix.handleHTTP(ctx)
 
 	apix.pool.Put(ctx)
 }
