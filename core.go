@@ -16,6 +16,10 @@ type ApiX struct {
 }
 
 func (apix *ApiX) handleHTTP(ctx *Context) {
+	
+}
+
+func errHandle(ctx *Context) {
 
 }
 
@@ -41,6 +45,8 @@ func NewApiX() *ApiX {
 			return &Context{}
 		},
 	}
+
+	apix.Use(server)
 
 	return apix
 }
