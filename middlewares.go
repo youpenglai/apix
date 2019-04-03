@@ -2,7 +2,7 @@ package apix
 
 func server(c *Context) {
 	c.SetHeader("server", ApiXName)
-	c.Next(c)
+	c.Next()
 }
 
 //func etag(c *Context) {

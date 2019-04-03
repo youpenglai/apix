@@ -6,13 +6,86 @@ import (
 	"io"
 	"path"
 	"mime"
+	"errors"
+	"strconv"
 )
+
+type Params map[string]string
+
+var (
+	ErrParamNotExists = errors.New("param not exists")
+)
+
+func (p Params) AddValue(key, value string) {
+	p[key] = value
+}
+
+func (p Params) GetString(key string) (string, error) {
+	v, exists := p[key]
+	if !exists {
+		return "", ErrParamNotExists
+	}
+
+	return v, nil
+}
+
+func (p Params) GetStringDefault(key string, defaultVal string) string {
+	v, err := p.GetString(key)
+	if err != nil {
+		return defaultVal
+	}
+
+	return v
+}
+
+func (p Params) GetInt(key string) (int64, error) {
+	v, err := p.GetString(key)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseInt(v, 10, 0)
+}
+
+func (p Params) GetIntDefault(key string, defaultVal int64) int64 {
+	v, err := p.GetInt(key)
+	if err != nil {
+		return defaultVal
+	}
+
+	return v
+}
+
+func (p Params) GetFloat(key string) (float64, error) {
+	v, err := p.GetString(key)
+	if err != nil {
+		return 0, err
+	}
+	f, err := strconv.ParseFloat(v, 0)
+	if err != nil {
+		return 0, err
+	}
+	return f, nil
+}
+
+func (p Params) GetFloatDefault(key string, defaultVal float64) float64 {
+	v, err := p.GetFloat(key)
+	if err != nil {
+		return defaultVal
+	}
+
+	return v
+}
+
+func NewParams() Params {
+	return make(Params)
+}
 
 type Context struct {
 	ResponseWriter http.ResponseWriter
 	Request        *http.Request
+	Params Params
 
-	Next Handler
+	Next func ()
 	// TODO: add more
 	writen int
 }
@@ -21,6 +94,11 @@ func (c *Context) reset(w http.ResponseWriter, r *http.Request) {
 	c.ResponseWriter = w
 	c.Request = r
 	c.writen = 0
+	c.Params = nil
+}
+
+func (c *Context) SetParams(params Params) {
+	c.Params = params
 }
 
 func (c *Context) GetResponseWriter() http.ResponseWriter {
@@ -79,4 +157,12 @@ func (c *Context) WriteFile(fileName string, writerHandler WriteFileHandler) err
 
 	c.Flush()
 	return nil
+}
+
+func (c *Context) ResponseURI() string {
+	return c.Request.RequestURI
+}
+
+func (c *Context) Method() string {
+	return c.Request.Method
 }

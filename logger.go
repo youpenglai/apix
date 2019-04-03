@@ -11,6 +11,6 @@ type LoggerOpts struct {
 
 func New(opts LoggerOpts) Handler{
 	return func(c *Context) {
-		c.Next(c)
+		c.Next()
 	}
 }

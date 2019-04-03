@@ -117,6 +117,10 @@ func (r *Router) buildEntries(path string) *Router {
 		p = newEntry
 	}
 
+	if newEntry == nil {
+		newEntry = r
+	}
+
 	return newEntry
 }
 
@@ -165,10 +169,10 @@ func (r *Router) Head(path string, handlers ...Handler) {
 }
 // TODO: add more http method handler
 
-func (r *Router) match(path string, method string) (handlers []Handler, urlParams map[string]string, err error) {
+func (r *Router) match(path string, method string) (handlers []Handler, urlParams Params, err error) {
 	parts := strings.Split(path, "/")
 
-	urlParams = make(map[string]string)
+	urlParams = NewParams()
 	handlers = make([]Handler,0)
 
 	re := r
@@ -186,7 +190,7 @@ func (r *Router) match(path string, method string) (handlers []Handler, urlParam
 			// 并记录下当前参数
 			if re.paramEntry != nil {
 				re = re.paramEntry
-				urlParams[re.paramName()] = part
+				urlParams.AddValue(re.paramName(), part)
 			} else {
 				err = ErrRouterNotFound
 				return

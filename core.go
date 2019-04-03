@@ -15,11 +15,36 @@ type ApiX struct {
 	pool *sync.Pool
 }
 
-func (apix *ApiX) handleHTTP(ctx *Context) {
-	
+
+func buildHandleChain(ctx *Context, handler... Handler) {
+	n := len(handler)
+	cur := 0
+
+	next := func () {
+		if cur < n {
+			nextHandle := handler[cur]
+			cur++
+			nextHandle(ctx)
+		}
+	}
+
+	ctx.Next = next
 }
 
-func errHandle(ctx *Context) {
+func (apix *ApiX) handleHTTP(ctx *Context) {
+	uri := ctx.ResponseURI()
+	handlers, params, err := apix.match(uri, ctx.Method())
+	if err != nil {
+		errHandle(err, ctx)
+		return
+	}
+
+	ctx.SetParams(params)
+	buildHandleChain(ctx, handlers...)
+	ctx.Next()
+}
+
+func errHandle(err error, ctx *Context) {
 
 }
 
