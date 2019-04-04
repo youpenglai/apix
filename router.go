@@ -203,6 +203,9 @@ func (r *Router) match(path string, method string) (handlers []Handler, urlParam
 	if methodHandlers, exist := re.handlers[strings.ToUpper(method)]; !exist {
 		err = ErrMethodNotFound
 	} else {
+		if re.middlewares != nil {
+			handlers = append(handlers, re.middlewares...)
+		}
 		handlers = append(handlers, methodHandlers...)
 	}
 

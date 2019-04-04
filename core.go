@@ -3,11 +3,16 @@ package apix
 import (
 	"net/http"
 	"sync"
+	"runtime"
+	"fmt"
 )
 
 const (
 	ApiXName = "ApiX"
+	ApiXVersion = "0.0.1"
 )
+
+var OSName = runtime.GOOS
 
 type ApiX struct {
 	Router
@@ -15,8 +20,10 @@ type ApiX struct {
 	pool *sync.Pool
 }
 
-
-func buildHandleChain(ctx *Context, handler... Handler) {
+func buildHandleChain(ctx *Context, err error, handler... Handler) {
+	if err != nil {
+		handler = append(handler, errHandle)
+	}
 	n := len(handler)
 	cur := 0
 
@@ -32,20 +39,54 @@ func buildHandleChain(ctx *Context, handler... Handler) {
 }
 
 func (apix *ApiX) handleHTTP(ctx *Context) {
-	uri := ctx.ResponseURI()
+	uri := ctx.ResponseURL()
 	handlers, params, err := apix.match(uri, ctx.Method())
-	if err != nil {
-		errHandle(err, ctx)
-		return
-	}
-
+	ctx.SetError(err)
 	ctx.SetParams(params)
-	buildHandleChain(ctx, handlers...)
+	ctx.parseQueries()
+
+	buildHandleChain(ctx, err, handlers...)
 	ctx.Next()
 }
 
-func errHandle(err error, ctx *Context) {
+func notFoundHandler(ctx *Context) {
+	ctx.WriteString(http.StatusNotFound,
+		fmt.Sprintf("%s %s (%s)\n404: url not found",
+			ApiXName, ApiXVersion, OSName))
+}
 
+func notAllowHandler(ctx *Context) {
+	ctx.WriteString(http.StatusMethodNotAllowed,
+		fmt.Sprintf("%s %s (%s)\nMethod: %s not allowed",
+			ApiXName, ApiXVersion, OSName, ctx.Method()))
+}
+
+func internalErrorHandler(ctx *Context) {
+	// print error stack
+	ctx.WriteString(http.StatusInternalServerError,
+		fmt.Sprintf("%s %s (%s)\nInternal server error: %s",
+			ApiXName, ApiXVersion, OSName, ctx.err.Error()))
+}
+
+func requestErrorHandler(ctx *Context) {
+	ctx.WriteString(http.StatusBadRequest,
+		fmt.Sprintf("%s %s (%s)\nBad request",
+			ApiXName, ApiXVersion, OSName))
+}
+
+func errHandle(ctx *Context) {
+	switch ctx.err {
+	case nil:
+		return
+	case ErrMethodNotFound:
+		notAllowHandler(ctx)
+	case ErrParamNotExists:
+		requestErrorHandler(ctx)
+	case ErrRouterNotFound:
+		notFoundHandler(ctx)
+	default:
+		internalErrorHandler(ctx)
+	}
 }
 
 func (apix *ApiX) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +112,7 @@ func NewApiX() *ApiX {
 		},
 	}
 
-	apix.Use(server)
+	apix.Use(server, Recovery())
 
 	return apix
 }

@@ -1,7 +1,9 @@
 package apix
 
+import "fmt"
+
 func server(c *Context) {
-	c.SetHeader("server", ApiXName)
+	c.SetHeader("server", fmt.Sprintf("%s %s (%s)", ApiXName, ApiXVersion, OSName))
 	c.Next()
 }
 
