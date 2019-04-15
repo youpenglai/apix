@@ -39,7 +39,7 @@ func buildHandleChain(ctx *Context, err error, handler... Handler) {
 }
 
 func (apix *ApiX) handleHTTP(ctx *Context) {
-	uri := ctx.ResponseURL()
+	uri := ctx.RequestURL()
 	handlers, params, err := apix.match(uri, ctx.Method())
 	ctx.SetError(err)
 	ctx.SetParams(params)

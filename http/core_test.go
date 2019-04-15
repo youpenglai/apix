@@ -8,7 +8,7 @@ func TestNewApiX(t *testing.T) {
 
 func TestApiX_Run(t *testing.T) {
 	apix := NewApiX()
-	apix.Use(NewLogger(LoggerOpts{}))
+	apix.Use(NewLogger())
 	apix.Get("/", func(ctx *Context) {
 		ctx.WriteString(200, "Hello, ApiX")
 	})

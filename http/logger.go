@@ -1,18 +1,26 @@
 package http
 
-import "time"
+import (
+	"time"
+	"github.com/youpenglai/goutils/logger"
+	ApixLogger "github.com/youpenglai/apix/logger"
+	"fmt"
+)
 
-type LoggerOpts struct {
-	Name string
-	Level string
-}
+var (
+	log = logger.GetLogger(ApixLogger.PrefixAccess)
+)
 
-func NewLogger(opts LoggerOpts) Handler{
+func NewLogger() Handler{
 	return func(c *Context) {
 		start := time.Now()
-		println("start:", start.Unix())
 		c.Next()
 		end := time.Now()
-		println("end:", end.Unix() , " Used:", end.Sub(start))
+
+		method := c.Method()
+
+		// TODO: add ipaddr and status code here
+		log.Info(fmt.Sprintf("[%s] - %s, Used: %0.4f", method, c.Request.URL.RequestURI(), end.Sub(start).Seconds()))
+		//println("end:", end.Unix() , " Used:", end.Sub(start))
 	}
 }

@@ -172,7 +172,7 @@ func (c *Context) NoContent() {
 	c.ResponseWriter.WriteHeader(204)
 }
 
-func (c *Context) ResponseURL() string {
+func (c *Context) RequestURL() string {
 	return c.Request.URL.Path
 }
 
