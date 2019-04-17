@@ -5,6 +5,7 @@ import (
 	"sync"
 	"runtime"
 	"fmt"
+	"context"
 )
 
 const (
@@ -18,6 +19,7 @@ type ApiX struct {
 	Router
 
 	pool *sync.Pool
+	server *http.Server
 }
 
 func buildHandleChain(ctx *Context, err error, handler... Handler) {
@@ -100,8 +102,16 @@ func (apix *ApiX) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	apix.pool.Put(ctx)
 }
 
-func (apix *ApiX) Run(bindAddr string) {
-	http.ListenAndServe(bindAddr, apix)
+func (apix *ApiX) Run(bindAddr string) (err error) {
+	apix.server = &http.Server{Addr:bindAddr, Handler:apix}
+	return apix.server.ListenAndServe()
+}
+
+func (apix *ApiX) Shutdown() {
+	if (apix.server != nil) {
+		ctx := context.Background()
+		apix.server.Shutdown(ctx)
+	}
 }
 
 func NewApiX() *ApiX {
@@ -112,7 +122,7 @@ func NewApiX() *ApiX {
 		},
 	}
 
-	apix.Use(server, Recovery())
+	apix.Use(NewLogger())
 
 	return apix
 }
