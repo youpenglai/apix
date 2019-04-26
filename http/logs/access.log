@@ -1,9 +1,0 @@
-ApiXAccess 2019-04-15 23:05:48.867 [GET] - /, Used: []S(float64=0)
-ApiXAccess 2019-04-15 23:05:49.165 [GET] - /favicon.ico, Used: []S(float64=0)
-ApiXAccess 2019-04-15 23:09:58.690 [GET] - /, Used: []d(float64=0)S
-ApiXAccess 2019-04-15 23:11:35.970 [GET] - /, Used: 0.0000S%!(EXTRA []interface {}=[])
-ApiXAccess 2019-04-15 23:14:53.616 [GET] - /, Used: 0.0010%!(EXTRA []interface {}=[])
-ApiXAccess 2019-04-15 23:18:08.431 [GET] - /, Used: 0.0000
-ApiXAccess 2019-04-15 23:26:05.807 [GET] - /, Used: 0.0010
-ApiXAccess 2019-04-15 23:33:46.137 [GET] - /mytest/11, Used: 0.0000
-ApiXAccess 2019-04-15 23:34:03.315 [GET] - /mytest, Used: 0.0000

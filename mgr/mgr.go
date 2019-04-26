@@ -1,1 +1,5 @@
 package mgr
+
+func init() {
+
+}
