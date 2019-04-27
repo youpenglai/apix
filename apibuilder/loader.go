@@ -13,12 +13,15 @@ var (
 	ErrNoDataTypeName = errors.New("no data type name")
 	ErrInvalidDataTypeName = errors.New("invalid data type name")
 	ErrDuplicateDataType = errors.New("duplicate data type")
+	ErrInvalidApiDef = errors.New("invalid api definition")
+	ErrApiNoUrl = errors.New("api has no url")
+	ErrApiUrlNotString = errors.New("api url is not string")
 )
 
 // API字段成员
 type Members map[string]*MemberAttr
 
-func NewApiMember() Members {
+func NewMember() Members {
 	return make(Members)
 }
 
@@ -31,7 +34,7 @@ type DataType struct {
 
 // 添加API类型
 func NewDataType(doc *ApiDoc, name string) *DataType {
-	return &DataType{doc: doc, Name: name, Members: NewApiMember()}
+	return &DataType{doc: doc, Name: name, Members: NewMember()}
 }
 
 func NewBaseDataType(name string) *DataType {
@@ -47,7 +50,7 @@ func (t *DataType) CheckValue(typeValue interface{}) (success bool, err error) {
 	return
 }
 
-type MemberEachFunc func(name string, attr MemberAttr)
+type MemberEachFunc func(name string, attr *MemberAttr)
 
 // 遍历数据类型中的成员
 func (t *DataType) MembersEach(eachFunc MemberEachFunc) {
@@ -73,6 +76,66 @@ type MemberAttr struct {
 }
 
 func (ma *MemberAttr) load(attrs map[string]interface{}) (err error) {
+	t, hasType := attrs["type"]
+	if !hasType {
+		err = ErrNoDataTypeName
+		return
+	}
+
+	switch t.(type) {
+	case string:
+		typeName := t.(string)
+		ma.Type = typeName
+		ma.IsArray = false
+	case []string:
+		ma.IsArray = true
+		ma.Type = t.([]string)[0]
+	}
+
+	requiredVal, hasRequired := attrs["required"]
+	if !hasRequired {
+		ma.Required = false
+	} else {
+		ma.Required, _ = toBool(requiredVal)
+	}
+
+	descriptionVal, hasDescription := attrs["description"]
+	if hasDescription {
+		ma.Description = ""
+	} else {
+		ma.Description, _ = toString(descriptionVal)
+	}
+
+	lengthVal, hasLength := attrs["length"]
+	if !hasLength {
+		ma.Length.Value = 0
+		ma.Length.Checked = false
+	} else {
+		ma.Length.Checked = true
+		val, _ := toInt(lengthVal)
+		ma.Length.Value = int(val)
+	}
+
+	minLengthVal, hasMinLength := attrs["minLength"]
+	if !hasMinLength {
+		ma.MinLength.Value = 0
+		ma.MinLength.Checked = false
+	} else {
+		ma.MinLength.Checked = true
+		val, _ := toInt(minLengthVal)
+		ma.MinLength.Value = int(val)
+	}
+
+	maxLengthVal, hasMaxLength := attrs["maxLength"]
+	if !hasMaxLength {
+		ma.MaxLength.Value = 0
+		ma.MaxLength.Checked = false
+	} else {
+		ma.MaxLength.Checked = true
+		val, _ := toInt(maxLengthVal)
+		ma.MaxLength.Value = int(val)
+	}
+
 	return nil
 }
 
@@ -140,6 +203,15 @@ func (doc *ApiDoc) addDataType(dataType *DataType) (err error) {
 	doc.Types[dataType.Name] = dataType
 
 	return
+}
+
+func (doc *ApiDoc) addApiEntry(entry *ApiEntry) {
+	if entry == nil {
+		// ignore nil
+		return
+	}
+
+	doc.Apis = append(doc.Apis, entry)
 }
 
 func (doc *ApiDoc) Parse(content []byte) (err error) {
@@ -245,10 +317,65 @@ func (doc *ApiDoc) parseDataTypes(dataTypes []interface{}) (err error) {
 	return
 }
 
+// 解析API参数
+func parseApiParams(paramsDef map[string]interface{}) (err error) {
+	return
+}
+
+// 解析API的返回值
+func parseApiReturns() (err error) {
+	return
+}
+
+//  解析API的映射
+func parseApiMapper() (err error) {
+	return
+}
+
+func parseApi(apiDef map[string]interface{}) (entry *ApiEntry, err error) {
+	entry = &ApiEntry{}
+
+	urlVal, hasUrl := apiDef["url"]
+	if !hasUrl {
+		err = ErrApiNoUrl
+		return
+	}
+	entry.Url, err = toString(urlVal)
+	if err != nil {
+		err = ErrApiUrlNotString
+		return
+	}
+
+	methodVal, hasMethod := apiDef["method"]
+	if !hasMethod {
+		entry.Method = "get" // default method is get
+	} else {
+		entry.Method, err = toString(methodVal)
+		if err != nil {
+			return
+		}
+		// TODO: check method valid
+	}
+	// Ignore description
+
+
+	return
+}
+
 func (doc *ApiDoc) parseApis(apis []interface{}) (err error) {
 	if len(apis) == 0 {
 		err = ErrNoApis
 		return
+	}
+
+	for _, apiMeta := range apis {
+		api, ok := apiMeta.(map[string]interface{})
+		if !ok {
+			err = ErrInvalidApiDef
+			return
+		}
+
+
 	}
 
 	return
