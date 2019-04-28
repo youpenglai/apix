@@ -82,7 +82,7 @@ type MemberAttr struct {
 	MaxLength   AttrLength    // 字段长度
 }
 
-func (ma *MemberAttr) load(attrs map[string]interface{}) (err error) {
+func (ma *MemberAttr) load(attrs map[interface{}]interface{}) (err error) {
 	t, hasType := attrs["type"]
 	if !hasType {
 		err = ErrNoDataTypeName
@@ -178,7 +178,7 @@ type ApiEntry struct {
 	Url         string             // API接口路径
 	Method      string             // API方法
 	Params      []*ApiParam // API参数映射
-	Returns     map[string]ApiReturn  // API返回值
+	Returns     map[string]*ApiReturn  // API返回值
 	Description string             // API描述
 }
 
@@ -276,10 +276,11 @@ func (doc *ApiDoc) parseBaseInfo(d map[string]interface{}) (err error) {
 	return
 }
 
-func parseDataTypeMembers(dataType *DataType, members map[string]interface{}) (err error) {
+func parseDataTypeMembers(dataType *DataType, members map[interface{}]interface{}) (err error) {
 	for name, attrs := range members {
+		mn := name.(string)
 		memberAttr := &MemberAttr{}
-		a, ok := attrs.(map[string]interface{})
+		a, ok := attrs.(map[interface{}]interface{})
 		if !ok {
 			// TODO: 不符合的数据
 		}
@@ -287,7 +288,7 @@ func parseDataTypeMembers(dataType *DataType, members map[string]interface{}) (e
 		if err != nil {
 			return
 		}
-		dataType.AddMember(name, memberAttr)
+		dataType.AddMember(mn, memberAttr)
 	}
 	return
 }
@@ -314,7 +315,7 @@ func (doc *ApiDoc) parseDataTypes(dataTypes []interface{}) (err error) {
 		if !hasMembers {
 			// TODO: no members
 		}
-		dstMembers, ok := members.(map[string]interface{})
+		dstMembers, ok := members.(map[interface{}]interface{})
 		if !ok {
 			// TODO: invalid member
 		}
@@ -329,11 +330,12 @@ func (doc *ApiDoc) parseDataTypes(dataTypes []interface{}) (err error) {
 	return
 }
 
-func parseApiParamDetail(param *ApiParam, members map[string]interface{}) (err error) {
+func parseApiParamDetail(param *ApiParam, members map[interface{}]interface{}) (err error) {
 	param.Members = make(Members)
 	for memberName, memberAttr := range members {
+		mn, _ := memberName.(string)
 		attr := &MemberAttr{}
-		ma, ok := memberAttr.(map[string]interface{})
+		ma, ok := memberAttr.(map[interface{}]interface{})
 		if !ok {
 			// TODO: invalid member attr
 		}
@@ -341,17 +343,18 @@ func parseApiParamDetail(param *ApiParam, members map[string]interface{}) (err e
 		if err != nil {
 			return
 		}
-		param.Members[memberName] = attr
+		param.Members[mn] = attr
 	}
 	return
 }
 
 // 解析API参数
-func parseApiParams(paramsDef map[string]interface{}) (params []*ApiParam, err error) {
+func parseApiParams(paramsDef map[interface{}]interface{}) (params []*ApiParam, err error) {
 	for from, def := range paramsDef {
-		param := &ApiParam{From: from}
+		strFrom, _ := from.(string)
+		param := &ApiParam{From: strFrom}
 
-		d, ok := def.(map[string]interface{})
+		d, ok := def.(map[interface{}]interface{})
 		if !ok {
 			// TODO: invalid param
 		}
@@ -366,17 +369,17 @@ func parseApiParams(paramsDef map[string]interface{}) (params []*ApiParam, err e
 	return
 }
 
-func parseApiReturnData(apiReturn *ApiReturn, data interface{}) (err error) {
 
+func parseApiReturnData(apiReturn *ApiReturn, data interface{}) (err error) {
 	switch data.(type) {
 	case string:
 		apiReturn.Data = data.(string)
-	case map[string]interface{}:
+	case map[interface{}]interface{}:
 		dataMembers := make(map[string]*MemberAttr)
-		for memberName, memberAttr := range data.(map[string]interface{}) {
+		for memberName, memberAttr := range data.(map[interface{}]interface{}) {
 			attr := &MemberAttr{}
 
-			a, ok := memberAttr.(map[string]interface{})
+			a, ok := memberAttr.(map[interface{}]interface{})
 			if !ok {
 				// TODO:
 			}
@@ -386,7 +389,8 @@ func parseApiReturnData(apiReturn *ApiReturn, data interface{}) (err error) {
 				return
 			}
 
-			dataMembers[memberName] = attr
+			mn := memberName.(string)
+			dataMembers[mn] = attr
 		}
 		apiReturn.Data = dataMembers
 	}
@@ -395,11 +399,12 @@ func parseApiReturnData(apiReturn *ApiReturn, data interface{}) (err error) {
 }
 
 // 解析API的返回值
-func parseApiReturns(returnsDef map[string]interface{}) (returns map[string]*ApiReturn, err error) {
+func parseApiReturns(returnsDef map[interface{}]interface{}) (returns map[string]*ApiReturn, err error) {
 	returns = make(map[string]*ApiReturn)
-	for statusCode, returnDef := range returnsDef {
+	for status, returnDef := range returnsDef {
+		statusCode := status.(string)
 		ret := &ApiReturn{}
-		def, ok := returnDef.(map[string]interface{})
+		def, ok := returnDef.(map[interface{}]interface{})
 		if !ok {
 			// TODO
 		}
@@ -420,7 +425,14 @@ func parseApiReturns(returnsDef map[string]interface{}) (returns map[string]*Api
 		}
 		// data
 		if ret.ReturnType == RETURN_TYPE_JSON {
-
+			returnDataDef, hasReturnData := def["data"]
+			if !hasReturnData {
+				// TODO:
+			}
+			err = parseApiReturnData(ret, returnDataDef)
+			if err != nil {
+				return
+			}
 		}
 
 		returns[statusCode] = ret
@@ -433,7 +445,7 @@ func parseApiMapper() (err error) {
 	return
 }
 
-func parseApi(apiDef map[string]interface{}) (entry *ApiEntry, err error) {
+func parseApi(apiDef map[interface{}]interface{}) (entry *ApiEntry, err error) {
 	entry = &ApiEntry{}
 
 	urlVal, hasUrl := apiDef["url"]
@@ -462,7 +474,7 @@ func parseApi(apiDef map[string]interface{}) (entry *ApiEntry, err error) {
 	// 允许不存在参数的调用
 	paramsVal, hasParams := apiDef["params"]
 	if hasParams {
-		params, ok := paramsVal.(map[string]interface{})
+		params, ok := paramsVal.(map[interface{}]interface{})
 		if !ok {
 			// TODO:
 		}
@@ -474,12 +486,12 @@ func parseApi(apiDef map[string]interface{}) (entry *ApiEntry, err error) {
 		// TODO: no returns
 	}
 
-	returns, ok := returnsVal.(map[string]interface{})
+	returns, ok := returnsVal.(map[interface{}]interface{})
 	if !ok {
 		// TODO:
 	}
 
-	parseApiReturns(returns)
+	entry.Returns, err = parseApiReturns(returns)
 
 	// TODO: add api mapper
 	parseApiMapper()
@@ -494,13 +506,19 @@ func (doc *ApiDoc) parseApis(apis []interface{}) (err error) {
 	}
 
 	for _, apiMeta := range apis {
-		api, ok := apiMeta.(map[string]interface{})
+		api, ok := apiMeta.(map[interface{}]interface{})
 		if !ok {
 			err = ErrInvalidApiDef
 			return
 		}
 
+		apiEntry, e := parseApi(api)
+		if e != nil {
+			err = e
+			return
+		}
 
+		doc.Apis = append(doc.Apis, apiEntry)
 	}
 
 	return
