@@ -5,6 +5,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	RETURN_TYPE_NOCONTENT = "nocontent"
+	RETURN_TYPE_JSON = "json"
+	RETURN_TYPE_FILE = "file"
+)
+
 var (
 	ErrNoDocVersion = errors.New("no doc version")
 	ErrNoBaseUrl = errors.New("no baseUrl")
@@ -16,6 +22,7 @@ var (
 	ErrInvalidApiDef = errors.New("invalid api definition")
 	ErrApiNoUrl = errors.New("api has no url")
 	ErrApiUrlNotString = errors.New("api url is not string")
+	ErrReturnTypeUnsupported = errors.New("return type unsupported")
 )
 
 // API字段成员
@@ -157,16 +164,21 @@ func (ma *MemberAttr) CheckMaxLength() bool {
 
 // API返回值
 type ApiReturn struct {
-	File string             // 返回为文件类型，输出的文件名
-	Data map[string]Members // 返回为JSON对象
+	ReturnType string		// 返回类型
+	Data interface{} // 返回为JSON对象
+}
+
+type ApiParam struct {
+	Members
+	From string
 }
 
 // API入口
 type ApiEntry struct {
 	Url         string             // API接口路径
 	Method      string             // API方法
-	Params      map[string]Members // API参数映射
-	Returns     map[int]ApiReturn  // API返回值
+	Params      []*ApiParam // API参数映射
+	Returns     map[string]ApiReturn  // API返回值
 	Description string             // API描述
 }
 
@@ -317,17 +329,106 @@ func (doc *ApiDoc) parseDataTypes(dataTypes []interface{}) (err error) {
 	return
 }
 
+func parseApiParamDetail(param *ApiParam, members map[string]interface{}) (err error) {
+	param.Members = make(Members)
+	for memberName, memberAttr := range members {
+		attr := &MemberAttr{}
+		ma, ok := memberAttr.(map[string]interface{})
+		if !ok {
+			// TODO: invalid member attr
+		}
+		err = attr.load(ma)
+		if err != nil {
+			return
+		}
+		param.Members[memberName] = attr
+	}
+	return
+}
+
 // 解析API参数
-func parseApiParams(paramsDef map[string]interface{}) (err error) {
+func parseApiParams(paramsDef map[string]interface{}) (params []*ApiParam, err error) {
+	for from, def := range paramsDef {
+		param := &ApiParam{From: from}
+
+		d, ok := def.(map[string]interface{})
+		if !ok {
+			// TODO: invalid param
+		}
+
+		err = parseApiParamDetail(param, d)
+		if err != nil {
+			return
+		}
+
+		params = append(params, param)
+	}
+	return
+}
+
+func parseApiReturnData(apiReturn *ApiReturn, data interface{}) (err error) {
+
+	switch data.(type) {
+	case string:
+		apiReturn.Data = data.(string)
+	case map[string]interface{}:
+		dataMembers := make(map[string]*MemberAttr)
+		for memberName, memberAttr := range data.(map[string]interface{}) {
+			attr := &MemberAttr{}
+
+			a, ok := memberAttr.(map[string]interface{})
+			if !ok {
+				// TODO:
+			}
+
+			err = attr.load(a)
+			if err != nil {
+				return
+			}
+
+			dataMembers[memberName] = attr
+		}
+		apiReturn.Data = dataMembers
+	}
+
 	return
 }
 
 // 解析API的返回值
-func parseApiReturns() (err error) {
+func parseApiReturns(returnsDef map[string]interface{}) (returns map[string]*ApiReturn, err error) {
+	returns = make(map[string]*ApiReturn)
+	for statusCode, returnDef := range returnsDef {
+		ret := &ApiReturn{}
+		def, ok := returnDef.(map[string]interface{})
+		if !ok {
+			// TODO
+		}
+
+		// Ignore description
+		// type: nocontent, json, file
+		retTypeVal, hasRetType := def["type"]
+		if !hasRetType {
+			ret.ReturnType = RETURN_TYPE_JSON
+		} else {
+			ret.ReturnType, err = toString(retTypeVal)
+			if ret.ReturnType != RETURN_TYPE_JSON &&
+				ret.ReturnType != RETURN_TYPE_FILE &&
+				ret.ReturnType != RETURN_TYPE_NOCONTENT {
+				err = ErrReturnTypeUnsupported
+				return
+			}
+		}
+		// data
+		if ret.ReturnType == RETURN_TYPE_JSON {
+
+		}
+
+		returns[statusCode] = ret
+	}
 	return
 }
 
-//  解析API的映射
+//  解析API到服务的映射
 func parseApiMapper() (err error) {
 	return
 }
@@ -358,6 +459,30 @@ func parseApi(apiDef map[string]interface{}) (entry *ApiEntry, err error) {
 	}
 	// Ignore description
 
+	// 允许不存在参数的调用
+	paramsVal, hasParams := apiDef["params"]
+	if hasParams {
+		params, ok := paramsVal.(map[string]interface{})
+		if !ok {
+			// TODO:
+		}
+		entry.Params, err = parseApiParams(params)
+	}
+
+	returnsVal, hasReturns := apiDef["returns"]
+	if !hasReturns {
+		// TODO: no returns
+	}
+
+	returns, ok := returnsVal.(map[string]interface{})
+	if !ok {
+		// TODO:
+	}
+
+	parseApiReturns(returns)
+
+	// TODO: add api mapper
+	parseApiMapper()
 
 	return
 }
