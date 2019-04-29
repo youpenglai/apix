@@ -3,6 +3,7 @@ package apibuilder
 import (
 	"errors"
 	"gopkg.in/yaml.v3"
+	"strings"
 )
 
 const (
@@ -16,13 +17,20 @@ var (
 	ErrNoBaseUrl = errors.New("no baseUrl")
 	ErrNoApis = errors.New("no apis")
 	ErrInvalidDataType = errors.New("invalid data type")
+	ErrNoMemberInDataType = errors.New("no member in data type")
 	ErrNoDataTypeName = errors.New("no data type name")
 	ErrInvalidDataTypeName = errors.New("invalid data type name")
 	ErrDuplicateDataType = errors.New("duplicate data type")
 	ErrInvalidApiDef = errors.New("invalid api definition")
 	ErrApiNoUrl = errors.New("api has no url")
+	ErrApiNoReturn = errors.New("api no return")
 	ErrApiUrlNotString = errors.New("api url is not string")
 	ErrReturnTypeUnsupported = errors.New("return type unsupported")
+	ErrInvalidMember = errors.New("invalid member")
+	ErrInvalidMemberAttr = errors.New("invalid member attributes")
+	ErrInvalidReturnDef = errors.New("invalid return definition")
+	ErrInvalidParamsDef = errors.New("invalid param definition")
+	ErrInvalidApiMethod = errors.New("invalid api method")
 )
 
 // API字段成员
@@ -236,7 +244,9 @@ func (doc *ApiDoc) Parse(content []byte) (err error) {
 
 	dataTypes, hasDataTypes := yamlDoc["types"]
 	if hasDataTypes {
-		doc.parseDataTypes(dataTypes.([]interface{}))
+		if err = doc.parseDataTypes(dataTypes.([]interface{})); err != nil {
+			return
+		}
 	}
 
 	apis, hasApis := yamlDoc["apis"]
@@ -245,8 +255,7 @@ func (doc *ApiDoc) Parse(content []byte) (err error) {
 		return
 	}
 
-	doc.parseDataTypes(dataTypes.([]interface{}))
-	doc.parseApis(apis.([]interface{}))
+	err = doc.parseApis(apis.([]interface{}))
 
 	return
 }
@@ -282,7 +291,7 @@ func parseDataTypeMembers(dataType *DataType, members map[interface{}]interface{
 		memberAttr := &MemberAttr{}
 		a, ok := attrs.(map[interface{}]interface{})
 		if !ok {
-			// TODO: 不符合的数据
+			err = ErrInvalidMemberAttr
 		}
 		err = memberAttr.load(a)
 		if err != nil {
@@ -295,7 +304,7 @@ func parseDataTypeMembers(dataType *DataType, members map[interface{}]interface{
 
 func (doc *ApiDoc) parseDataTypes(dataTypes []interface{}) (err error) {
 	for _, dt := range dataTypes {
-		dataTypeMeta, ok := dt.(map[string]interface{})
+		dataTypeMeta, ok := dt.(map[interface{}]interface{})
 		if !ok {
 			err = ErrInvalidDataType
 			return
@@ -313,15 +322,18 @@ func (doc *ApiDoc) parseDataTypes(dataTypes []interface{}) (err error) {
 		dataType := NewDataType(doc, name)
 		members, hasMembers := dataTypeMeta["members"]
 		if !hasMembers {
-			// TODO: no members
+			err = ErrNoMemberInDataType
+			return
 		}
 		dstMembers, ok := members.(map[interface{}]interface{})
 		if !ok {
-			// TODO: invalid member
+			err = ErrInvalidMember
+			return
 		}
 		err = parseDataTypeMembers(dataType, dstMembers)
 		if err != nil {
-			// TODO: invalid members
+			err = ErrInvalidMember
+			return
 		}
 		if err = doc.addDataType(dataType); err != nil {
 			return
@@ -337,7 +349,7 @@ func parseApiParamDetail(param *ApiParam, members map[interface{}]interface{}) (
 		attr := &MemberAttr{}
 		ma, ok := memberAttr.(map[interface{}]interface{})
 		if !ok {
-			// TODO: invalid member attr
+			err = ErrInvalidMemberAttr
 		}
 		err = attr.load(ma)
 		if err != nil {
@@ -356,7 +368,7 @@ func parseApiParams(paramsDef map[interface{}]interface{}) (params []*ApiParam, 
 
 		d, ok := def.(map[interface{}]interface{})
 		if !ok {
-			// TODO: invalid param
+			err = ErrInvalidParamsDef
 		}
 
 		err = parseApiParamDetail(param, d)
@@ -379,9 +391,24 @@ func parseApiReturnData(apiReturn *ApiReturn, data interface{}) (err error) {
 		for memberName, memberAttr := range data.(map[interface{}]interface{}) {
 			attr := &MemberAttr{}
 
-			a, ok := memberAttr.(map[interface{}]interface{})
+			var a map[interface{}]interface{}
+			ok := true
+			switch memberAttr.(type) {
+			case map[interface{}]interface{}:
+				a = memberAttr.(map[interface{}]interface{})
+			case map[string]interface{}:
+				t := memberAttr.(map[string]interface{})
+				a = make(map[interface{}]interface{})
+				for key, attrVal := range t {
+					a[key] = attrVal
+				}
+			default:
+				ok = false
+			}
+
 			if !ok {
-				// TODO:
+				err = ErrInvalidMemberAttr
+				return
 			}
 
 			err = attr.load(a)
@@ -406,7 +433,8 @@ func parseApiReturns(returnsDef map[interface{}]interface{}) (returns map[string
 		ret := &ApiReturn{}
 		def, ok := returnDef.(map[interface{}]interface{})
 		if !ok {
-			// TODO
+			err = ErrInvalidReturnDef
+			return
 		}
 
 		// Ignore description
@@ -427,7 +455,8 @@ func parseApiReturns(returnsDef map[interface{}]interface{}) (returns map[string
 		if ret.ReturnType == RETURN_TYPE_JSON {
 			returnDataDef, hasReturnData := def["data"]
 			if !hasReturnData {
-				// TODO:
+				err = ErrApiNoReturn
+				return
 			}
 			err = parseApiReturnData(ret, returnDataDef)
 			if err != nil {
@@ -443,6 +472,26 @@ func parseApiReturns(returnsDef map[interface{}]interface{}) (returns map[string
 //  解析API到服务的映射
 func parseApiMapper() (err error) {
 	return
+}
+
+var httpMethods = map[string]bool {
+	"get": true,
+	"post": true,
+	"put": true,
+	"delete": true,
+	"options": true,
+	"head": true,
+	"patch": true,
+	"trace": true,
+}
+
+func checkMethod(method string) error {
+	method = strings.ToLower(method)
+	_, exist := httpMethods[method]
+	if !exist {
+		return ErrInvalidApiMethod
+	}
+	return nil
 }
 
 func parseApi(apiDef map[interface{}]interface{}) (entry *ApiEntry, err error) {
@@ -467,7 +516,9 @@ func parseApi(apiDef map[interface{}]interface{}) (entry *ApiEntry, err error) {
 		if err != nil {
 			return
 		}
-		// TODO: check method valid
+		if err = checkMethod(entry.Method); err != nil {
+			return
+		}
 	}
 	// Ignore description
 
@@ -476,19 +527,20 @@ func parseApi(apiDef map[interface{}]interface{}) (entry *ApiEntry, err error) {
 	if hasParams {
 		params, ok := paramsVal.(map[interface{}]interface{})
 		if !ok {
-			// TODO:
+			err = ErrInvalidParamsDef
 		}
 		entry.Params, err = parseApiParams(params)
 	}
 
 	returnsVal, hasReturns := apiDef["returns"]
 	if !hasReturns {
-		// TODO: no returns
+		err = ErrApiNoReturn
+		return
 	}
 
 	returns, ok := returnsVal.(map[interface{}]interface{})
 	if !ok {
-		// TODO:
+		err = ErrInvalidReturnDef
 	}
 
 	entry.Returns, err = parseApiReturns(returns)

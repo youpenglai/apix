@@ -237,7 +237,7 @@ apis:
 `
 
 func TestApiDoc_Parse(t *testing.T) {
-	apiDoc := &ApiDoc{}
+	apiDoc := NewApiDoc()
 	err := apiDoc.Parse([]byte(testApiDoc))
 	if err != nil {
 		t.Error(err)
