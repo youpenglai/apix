@@ -107,11 +107,12 @@ func (apix *ApiX) Run(bindAddr string) (err error) {
 	return apix.server.ListenAndServe()
 }
 
-func (apix *ApiX) Shutdown() {
+func (apix *ApiX) Shutdown() error {
 	if (apix.server != nil) {
 		ctx := context.Background()
-		apix.server.Shutdown(ctx)
+		return apix.server.Shutdown(ctx)
 	}
+	return nil
 }
 
 func NewApiX() *ApiX {
