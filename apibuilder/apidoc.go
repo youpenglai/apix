@@ -31,6 +31,7 @@ var (
 	ErrInvalidReturnDef = errors.New("invalid return definition")
 	ErrInvalidParamsDef = errors.New("invalid param definition")
 	ErrInvalidApiMethod = errors.New("invalid api method")
+	ErrDataTypeNotExist = errors.New("data type is not exist")
 )
 
 // API字段成员
@@ -111,14 +112,14 @@ func (ma *MemberAttr) load(attrs map[interface{}]interface{}) (err error) {
 	if !hasRequired {
 		ma.Required = false
 	} else {
-		ma.Required, _ = toBool(requiredVal)
+		ma.Required, _ = ToBool(requiredVal)
 	}
 
 	descriptionVal, hasDescription := attrs["description"]
 	if hasDescription {
 		ma.Description = ""
 	} else {
-		ma.Description, _ = toString(descriptionVal)
+		ma.Description, _ = ToString(descriptionVal)
 	}
 
 	lengthVal, hasLength := attrs["length"]
@@ -127,7 +128,7 @@ func (ma *MemberAttr) load(attrs map[interface{}]interface{}) (err error) {
 		ma.Length.Checked = false
 	} else {
 		ma.Length.Checked = true
-		val, _ := toInt(lengthVal)
+		val, _ := ToInt(lengthVal)
 		ma.Length.Value = int(val)
 	}
 
@@ -137,7 +138,7 @@ func (ma *MemberAttr) load(attrs map[interface{}]interface{}) (err error) {
 		ma.MinLength.Checked = false
 	} else {
 		ma.MinLength.Checked = true
-		val, _ := toInt(minLengthVal)
+		val, _ := ToInt(minLengthVal)
 		ma.MinLength.Value = int(val)
 	}
 
@@ -147,7 +148,7 @@ func (ma *MemberAttr) load(attrs map[interface{}]interface{}) (err error) {
 		ma.MaxLength.Checked = false
 	} else {
 		ma.MaxLength.Checked = true
-		val, _ := toInt(maxLengthVal)
+		val, _ := ToInt(maxLengthVal)
 		ma.MaxLength.Value = int(val)
 	}
 
@@ -264,7 +265,7 @@ func (doc *ApiDoc) Parse(content []byte) (err error) {
 func (doc *ApiDoc) parseBaseInfo(d map[string]interface{}) (err error) {
 	// 文档描述
 	descVal, _ := d["description"]
-	doc.Description, _ = toString(descVal)
+	doc.Description, _ = ToString(descVal)
 
 	// 文档版本
 	versionVal, hasVersion := d["version"]
@@ -272,7 +273,7 @@ func (doc *ApiDoc) parseBaseInfo(d map[string]interface{}) (err error) {
 		err = ErrNoDocVersion
 		return
 	}
-	doc.Version, _ = toString(versionVal)
+	doc.Version, _ = ToString(versionVal)
 
 	// 接口baseUrl
 	baseUrlVal, hasBaseUrl := d["baseUrl"]
@@ -280,7 +281,7 @@ func (doc *ApiDoc) parseBaseInfo(d map[string]interface{}) (err error) {
 		err = ErrNoBaseUrl
 		return
 	}
-	doc.BaseUrl, _ = toString(baseUrlVal)
+	doc.BaseUrl, _ = ToString(baseUrlVal)
 
 	return
 }
@@ -314,7 +315,7 @@ func (doc *ApiDoc) parseDataTypes(dataTypes []interface{}) (err error) {
 			err = ErrNoDataTypeName
 			return
 		}
-		name, nameErr := toString(nameVal)
+		name, nameErr := ToString(nameVal)
 		if nameErr != nil {
 			err = ErrInvalidDataTypeName
 			return
@@ -443,7 +444,7 @@ func parseApiReturns(returnsDef map[interface{}]interface{}) (returns map[string
 		if !hasRetType {
 			ret.ReturnType = RETURN_TYPE_JSON
 		} else {
-			ret.ReturnType, err = toString(retTypeVal)
+			ret.ReturnType, err = ToString(retTypeVal)
 			if ret.ReturnType != RETURN_TYPE_JSON &&
 				ret.ReturnType != RETURN_TYPE_FILE &&
 				ret.ReturnType != RETURN_TYPE_NOCONTENT {
@@ -502,7 +503,7 @@ func parseApi(apiDef map[interface{}]interface{}) (entry *ApiEntry, err error) {
 		err = ErrApiNoUrl
 		return
 	}
-	entry.Url, err = toString(urlVal)
+	entry.Url, err = ToString(urlVal)
 	if err != nil {
 		err = ErrApiUrlNotString
 		return
@@ -512,7 +513,7 @@ func parseApi(apiDef map[interface{}]interface{}) (entry *ApiEntry, err error) {
 	if !hasMethod {
 		entry.Method = "get" // default method is get
 	} else {
-		entry.Method, err = toString(methodVal)
+		entry.Method, err = ToString(methodVal)
 		if err != nil {
 			return
 		}

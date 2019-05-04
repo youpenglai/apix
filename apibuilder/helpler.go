@@ -7,13 +7,12 @@ import (
 )
 
 var (
-	ErrDataTypeNotExist = errors.New("data type is not exist")
 	ErrConvertToString = errors.New("can not convert to string")
 	ErrConvertToInt = errors.New("can not convert to integer")
 	ErrConvertToFloat = errors.New("can not convert to float")
 )
 
-func toString(rawVal interface{}) (ret string, err error) {
+func ToString(rawVal interface{}) (ret string, err error) {
 	if rawVal == nil {
 		return
 	}
@@ -56,7 +55,7 @@ func toString(rawVal interface{}) (ret string, err error) {
 	return
 }
 
-func toInt(rawVal interface{}) (ret int64, err error) {
+func ToInt(rawVal interface{}) (ret int64, err error) {
 	if rawVal == nil {
 		return
 	}
@@ -91,7 +90,7 @@ func toInt(rawVal interface{}) (ret int64, err error) {
 	return
 }
 
-func toBool (rawVal interface{}) (ret bool, err error) {
+func ToBool(rawVal interface{}) (ret bool, err error) {
 	ret = false
 	if rawVal == nil {
 		return
@@ -134,7 +133,7 @@ func toBool (rawVal interface{}) (ret bool, err error) {
 	return
 }
 
-func toFloat(rawVal interface{}) (ret float64, err error) {
+func ToFloat(rawVal interface{}) (ret float64, err error) {
 	if rawVal == nil {
 		return
 	}

@@ -4,7 +4,6 @@ import (
 	"github.com/youpenglai/apix/apibuilder"
 	apixHttp "github.com/youpenglai/apix/http"
 	"sync"
-	"net/http"
 	"errors"
 )
 
@@ -43,10 +42,18 @@ func NewApiGateWay(opts ...*ApiGatewayOpts) *ApiGateway {
 	}
 }
 
+func (g *ApiGateway) installApis() error {
+	return nil
+}
+
 // 重新加载ApiGateway
 // 当更新ApiDoc后，为了让ApiDoc生效，所以需要对ApiGateWay
 func (g *ApiGateway) Reload() error {
 	g.Shutdown()
+	// reload the server
+	if g.httpServer != nil {
+		g.httpServer = apixHttp.NewApiX()
+	}
 
 	g.Serve()
 	return nil
@@ -76,14 +83,15 @@ func (g *ApiGateway) AddApiDoc(docName string, docContent []byte) (err error) {
 	return nil
 }
 
-// 不阻塞主程序
-func (g *ApiGateway) Serve() {
-	go func() {
-		err := g.httpServer.Run(g.opts.bindAddr)
-		if err != http.ErrServerClosed {
-			panic(err)
-		}
-	}()
+// 执行服务
+// 该程序会阻塞当前程序直到Shutdown
+func (g *ApiGateway) Serve() (err error) {
+	if err = g.installApis(); err !=nil {
+		return
+	}
+
+	err = g.httpServer.Run(g.opts.bindAddr)
+	return
 }
 
 func (g *ApiGateway) Shutdown() error {

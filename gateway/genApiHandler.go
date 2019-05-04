@@ -5,8 +5,13 @@ import (
 	"github.com/youpenglai/apix/apibuilder"
 )
 
+func genApiParamsHandler(params []*apibuilder.ApiParam) (handler apiXHttp.Handler, err error) {
+	return
+}
+
+
 // Api代码生成
-func GenApiHandle (doc *apibuilder.ApiEntry) (handler apiXHttp.Handler, err error) {
+func GenApiHandles (doc *apibuilder.ApiDoc) (handler apiXHttp.Handler, err error) {
 	return func(ctx *apiXHttp.Context) {
 
 	}, nil

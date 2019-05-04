@@ -219,3 +219,8 @@ func (c *Context) parseQueries() {
 func (c *Context) Queries() Params {
 	return c.queries
 }
+
+// 获取原生的请求Body
+func (c *Context) Body() (io.ReadCloser) {
+	return c.Request.Body
+}
