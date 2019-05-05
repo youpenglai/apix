@@ -5,6 +5,7 @@ import (
 	apixHttp "github.com/youpenglai/apix/http"
 	"sync"
 	"errors"
+	"bytes"
 )
 
 var (
@@ -13,10 +14,10 @@ var (
 )
 
 type ApiGatewayOpts struct {
-	bindAddr string
+	BindAddr string
 }
 
-var defaultApiGatewayOpts = &ApiGatewayOpts{bindAddr: "127.0.0.1:8080"}
+var defaultApiGatewayOpts = &ApiGatewayOpts{BindAddr: "127.0.0.1:8080"}
 
 type ApiGateway struct {
 	allApiDocs map[string]*apibuilder.ApiDoc
@@ -30,7 +31,7 @@ type ApiGateway struct {
 func NewApiGateWay(opts ...*ApiGatewayOpts) *ApiGateway {
 	gatewayOpts := defaultApiGatewayOpts
 	if len(opts) > 0 {
-		if opts[0].bindAddr != "" {
+		if opts[0].BindAddr != "" {
 			gatewayOpts = opts[0]
 		}
 	}
@@ -42,7 +43,61 @@ func NewApiGateWay(opts ...*ApiGatewayOpts) *ApiGateway {
 	}
 }
 
+func urlJoin(urlList ...string) string {
+	if len(urlList) == 0 {
+		return ""
+	}
+	buff := bytes.NewBuffer(nil)
+	last := len(urlList) - 1
+	for i, url := range urlList {
+		addSlash := false
+		if url[len(url) - 1] != '/' {
+			addSlash = true
+		}
+
+		if last == i {
+			addSlash = false
+		}
+
+		buff.WriteString(url)
+		if addSlash {
+			buff.WriteByte('/')
+		}
+	}
+
+	return ""
+}
+
+func (g *ApiGateway) installApi(doc *apibuilder.ApiDoc) (err error) {
+	var code *apibuilder.ApiCode
+	code, err = apibuilder.GenApiCode(doc)
+	if err != nil {
+		return
+	}
+	for _, apiEntry := range doc.Apis {
+		dstUrl := urlJoin(doc.BaseUrl, apiEntry.Url)
+		codeBlock, _ := code.GetApiCode(apiEntry.Url)
+		switch apiEntry.Method {
+		case "get":
+			g.httpServer.Get(dstUrl, GenApiHandle(codeBlock))
+		case "put":
+			g.httpServer.Put(dstUrl, GenApiHandle(codeBlock))
+		case "post":
+			g.httpServer.Put(dstUrl, GenApiHandle(codeBlock))
+		case "delete":
+			g.httpServer.Put(dstUrl, GenApiHandle(codeBlock))
+		// TODO: 添加更多的方法处理
+		}
+	}
+	return
+}
+
 func (g *ApiGateway) installApis() error {
+	for _, apiDoc := range g.allApiDocs {
+		if err := g.installApi(apiDoc); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -90,7 +145,7 @@ func (g *ApiGateway) Serve() (err error) {
 		return
 	}
 
-	err = g.httpServer.Run(g.opts.bindAddr)
+	err = g.httpServer.Run(g.opts.BindAddr)
 	return
 }
 

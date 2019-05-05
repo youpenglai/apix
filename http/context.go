@@ -224,3 +224,7 @@ func (c *Context) Queries() Params {
 func (c *Context) Body() (io.ReadCloser) {
 	return c.Request.Body
 }
+
+func (c *Context) Header() (http.Header) {
+	return c.Request.Header
+}

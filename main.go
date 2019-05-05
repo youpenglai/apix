@@ -1,9 +1,12 @@
 package main
 
 import (
-	_ "github.com/youpenglai/apix/logger"
-	_ "github.com/youpenglai/apix/mgr"
+	"github.com/youpenglai/apix/mgr"
+	"github.com/youpenglai/goutils/logger"
 )
 
 func main() {
+	l := logger.GetLogger("ApiX")
+	l.Info("ApiX Started")
+	mgr.RunManagerServer()
 }

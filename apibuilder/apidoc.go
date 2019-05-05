@@ -155,22 +155,6 @@ func (ma *MemberAttr) load(attrs map[interface{}]interface{}) (err error) {
 	return nil
 }
 
-func (ma *MemberAttr) CheckType() bool {
-	return false
-}
-
-func (ma *MemberAttr) CheckLength() bool {
-	return false
-}
-
-func (ma *MemberAttr) CheckMinLength() bool {
-	return false
-}
-
-func (ma *MemberAttr) CheckMaxLength() bool {
-	return false
-}
-
 // API返回值
 type ApiReturn struct {
 	ReturnType string		// 返回类型

@@ -107,11 +107,22 @@ func (r *Router) buildEntries(path string) *Router {
 			continue
 		}
 
-		newEntry = newRouterEntry(part)
+		// 我们要尝试去找当前对应的路由是否存在
+		// 如果存在就拿过来用，不存在再创建新的路由项
 		if isParam(part) {
-			p.setParamEntry(newEntry)
+			if p.paramEntry != nil {
+				newEntry = p.paramEntry
+			} else {
+				newEntry = newRouterEntry(part)
+				p.setParamEntry(newEntry)
+			}
 		} else {
-			p.addSubEntry(part, newEntry)
+			if entry, exists := p.subEntries[part]; exists {
+				newEntry = entry
+			} else {
+				newEntry = newRouterEntry(part)
+				p.addSubEntry(part, newEntry)
+			}
 		}
 		// next level
 		p = newEntry

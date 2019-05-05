@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strconv"
 	"fmt"
+	"bytes"
 )
 
 var (
@@ -115,7 +116,7 @@ type StringVar struct {
 }
 
 func StringConstructor() Variable {
-	return nil
+	return &StringVar{}
 }
 
 func (sv *StringVar) MarshalJSON() (data []byte, err error) {
@@ -172,7 +173,7 @@ func (bv *BooleanVar) SetValue(val interface{}) (err error) {
 }
 
 func BooleanConstructor() Variable {
-	return nil
+	return &BooleanVar{}
 }
 
 // 数组变量，这是个容器类型，很麻烦
@@ -183,7 +184,7 @@ type ArrayVar struct {
 }
 
 func ArrayConstructor() Variable {
-	return nil
+	return &ArrayVar{val:make([]Variable, 0)}
 }
 
 func (av *ArrayVar) setCode(code *ApiCode) {
@@ -191,10 +192,51 @@ func (av *ArrayVar) setCode(code *ApiCode) {
 }
 
 func (av *ArrayVar) MarshalJSON() (data []byte, err error) {
+	buf := bytes.NewBuffer(data)
+	buf.WriteByte('[')
+
+	last := len(av.val) - 1
+	for i, v := range av.val {
+		j, e := v.MarshalJSON()
+		if e != nil {
+			err = e
+			return
+		}
+		buf.Write(j)
+		if i != last {
+			buf.WriteByte(',')
+		}
+	}
+
+	buf.WriteByte(']')
+	data = buf.Bytes()
 	return
 }
 
 func (av *ArrayVar) Validation() (err error) {
+	// 检查本身
+	if av.required && len(av.val) == 0{
+		err = ErrValidationRequired
+		return
+	}
+	if av.length.Checked && len(av.val) != av.length.Value {
+		err = ErrValidationLength
+		return
+	}
+	if av.minLength.Checked && len(av.val) < av.minLength.Value {
+		err = ErrValidationMinLength
+		return
+	}
+	if av.maxLength.Checked && len(av.val) > av.maxLength.Value {
+		err = ErrValidationMaxLength
+		return
+	}
+	// 检查内部成员
+	for _, item := range av.val {
+		if err = item.Validation(); err != nil {
+			return
+		}
+	}
 	return
 }
 
@@ -251,10 +293,35 @@ func (ov *ObjectVar) setCode(code *ApiCode) {
 }
 
 func (ov *ObjectVar) MarshalJSON() (data []byte, err error) {
+	buff := bytes.NewBuffer(data)
+	buff.WriteByte('{')
+	last := len(ov.Attrs) - 1
+	for k, v := range ov.Attrs {
+		j, e := v.MarshalJSON()
+		if e != nil {
+			err = e
+			return
+		}
+
+		buff.WriteString("\"" + k + "\":")
+		buff.Write(j)
+		if last != 0 {
+			buff.WriteByte(',')
+			last--
+		}
+	}
+	buff.WriteByte('}')
+	data = buff.Bytes()
 	return
 }
 
 func (ov *ObjectVar) Validation() (err error) {
+	for _, v := range ov.Attrs {
+		err = v.Validation()
+		if err != nil {
+			return
+		}
+	}
 	return
 }
 
@@ -281,7 +348,7 @@ func (ov *ObjectVar) SetValue(val interface{}) (err error) {
 }
 
 func ObjectConstructor() Variable {
-	return nil
+	return &ObjectVar{Attrs:make(map[string]Variable)}
 }
 
 // 空值变量
@@ -320,6 +387,7 @@ func (acb *ApiCodeBlock) BindParamReader(reader ParamReader) {
 	acb.paramReader = reader
 }
 
+// 读取数据
 func readData(code *ApiCode, val interface{}, attr *MemberAttr) (v Variable, err error) {
 	var typeConstructor *DataTypeConstructor
 	if typeConstructor, err = code.getDataType(attr.Type); err != nil {
@@ -342,17 +410,20 @@ func readData(code *ApiCode, val interface{}, attr *MemberAttr) (v Variable, err
 	return
 }
 
+// 读取参数
 func (acb *ApiCodeBlock) ReadParams() (param ParamVar, err error) {
 	// no params
 	if len(acb.params) == 0 {
 		param = &NilParam{}
+		return
 	}
 
-	paramVal := &ObjectVar{}
+	param = ObjectConstructor()
+	paramVal, _ := param.(*ObjectVar)
 
-	for _, param := range acb.params {
-		for name, memberAttr := range param.Members {
-			val := acb.paramReader.Get(name, param.From)
+	for _, inParam := range acb.params {
+		for name, memberAttr := range inParam.Members {
+			val := acb.paramReader.Get(name, inParam.From)
 			variable , e:= readData(acb.code, val, memberAttr)
 			if e != nil {
 				err = e
@@ -362,17 +433,21 @@ func (acb *ApiCodeBlock) ReadParams() (param ParamVar, err error) {
 		}
 	}
 
-	param = paramVal
 	return
 }
 
+// 读取返回值
 func (acb *ApiCodeBlock) ReadReturn() {}
 
+// 数据类型构造器
+// constructor: 构造函数
+// dataType: 数据类型
 type DataTypeConstructor struct {
 	constructor VariableConstructor
 	dataType *DataType
 }
 
+// 获取构造器数据类型名称
 func (c *DataTypeConstructor) GetName() string {
 	return c.dataType.Name
 }
@@ -381,6 +456,7 @@ func NewDataTypeConstructor(constructorFunc VariableConstructor, dataType *DataT
 	return &DataTypeConstructor{constructor:constructorFunc, dataType:dataType}
 }
 
+// 基本数据类型
 var baseDataTypeConstructor = map[string]*DataTypeConstructor{
 	"integer": &DataTypeConstructor{dataType:NewBaseDataType("integer"), constructor:IntConstructor},
 	"float": &DataTypeConstructor{dataType:NewBaseDataType("float"), constructor:FloatConstructor},
@@ -388,9 +464,18 @@ var baseDataTypeConstructor = map[string]*DataTypeConstructor{
 	"string": &DataTypeConstructor{dataType:NewBaseDataType("string"), constructor:StringConstructor},
 }
 
+// Api代码
+// 将输入的数据处理为何数据类型关联的数据
 type ApiCode struct {
 	dataTypeConstructor map[string]*DataTypeConstructor
 	entries             map[string]*ApiCodeBlock
+}
+
+func NewApiCode() *ApiCode {
+	return &ApiCode{
+		dataTypeConstructor:make(map[string]*DataTypeConstructor),
+		entries: make(map[string]*ApiCodeBlock),
+	}
 }
 
 func (ac *ApiCode) addApiEntry(path string, block *ApiCodeBlock) {
@@ -411,8 +496,20 @@ func (ac *ApiCode) getDataType(name string) (constructor *DataTypeConstructor, e
 	return
 }
 
+func (ac *ApiCode) GetApiCode(path string) (codeBlock *ApiCodeBlock, err error) {
+	var exists bool
+	codeBlock, exists = ac.entries[path]
+	if !exists {
+		// TODO: err
+		return
+	}
+	return
+}
+
+// 生成Api处理代码逻辑
+// 额，非传统意义上的代码生成
 func GenApiCode(doc *ApiDoc) (code *ApiCode, err error){
-	code = &ApiCode{}
+	code = NewApiCode()
 
 	// Install base data types
 	for _, base := range baseDataTypeConstructor {

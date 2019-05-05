@@ -20,7 +20,7 @@ func NewLogger() Handler{
 		method := c.Method()
 
 		// TODO: add ipaddr and status code here
-		log.Info(fmt.Sprintf("[%s] %0.4fS - %5s", method, end.Sub(start).Seconds(), c.Request.URL.RequestURI()))
+		log.Info(fmt.Sprintf("[%s] %0.4fS - %s", method, end.Sub(start).Seconds(), c.Request.URL.RequestURI()))
 		//println("end:", end.Unix() , " Used:", end.Sub(start))
 	}
 }
