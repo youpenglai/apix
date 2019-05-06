@@ -65,7 +65,7 @@ func urlJoin(urlList ...string) string {
 		}
 	}
 
-	return ""
+	return buff.String()
 }
 
 func (g *ApiGateway) installApi(doc *apibuilder.ApiDoc) (err error) {
@@ -83,7 +83,7 @@ func (g *ApiGateway) installApi(doc *apibuilder.ApiDoc) (err error) {
 		case "put":
 			g.httpServer.Put(dstUrl, GenApiHandle(codeBlock))
 		case "post":
-			g.httpServer.Put(dstUrl, GenApiHandle(codeBlock))
+			g.httpServer.Post(dstUrl, GenApiHandle(codeBlock))
 		case "delete":
 			g.httpServer.Put(dstUrl, GenApiHandle(codeBlock))
 		// TODO: 添加更多的方法处理
