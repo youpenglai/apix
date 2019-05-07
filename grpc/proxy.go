@@ -1,4 +1,4 @@
-package gateway
+package grpc
 
 import (
 	"os"
@@ -10,14 +10,10 @@ import (
 )
 
 var (
-	serviceProxy map[string]*ProxyService
+	serviceProxy = make(map[string]*ProxyService)
 
 	ErrServiceProxyNotFound = errors.New("service proxy not found")
 )
-
-type proxyProcess struct {
-
-}
 
 func startProxyProcess(proxyExe string) {
 	proxyProcessInst := exec.Command(proxyExe)
@@ -28,7 +24,6 @@ func startProxyProcess(proxyExe string) {
 	}
 	writer, err := proxyProcessInst.StdinPipe()
 	if err != nil {
-		// TODO: add code here
 		return
 	}
 
@@ -50,7 +45,7 @@ func startProxyProcess(proxyExe string) {
 	}
 }
 
-func loadAllProxy() {
+func LoadAllProxy() {
 	pwd, err := os.Getwd()
 	if err != nil {
 		// TODO: 错误处理
@@ -72,7 +67,7 @@ func CallService(serviceName, methodName string, params []byte) ([]byte, error) 
 		Method:methodName,
 		Params:params,
 	}
-	data, err := json.Marshal(call)
+	data, err := call.Marshal()
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +80,6 @@ func CallService(serviceName, methodName string, params []byte) ([]byte, error) 
 	return serviceInst.CallSync(data)
 }
 
-func init() {
-	loadAllProxy()
-}
+//func init() {
+//	//LoadAllProxy()
+//}

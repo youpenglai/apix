@@ -30,9 +30,11 @@ func initLoggers() {
 	errorLogPath := filepath.Join(LogPath, ErrorLog)
 	runLogPath := filepath.Join(LogPath, RunLog)
 
-	logger.InitLogger(runLevel, logger.LoggerOpts{
-		Type: logger.LoggerConsole,
-	}, logger.LoggerOpts{
+	logger.InitLogger(runLevel,
+	//	logger.LoggerOpts{
+	//	Type: logger.LoggerConsole,
+	//},
+	logger.LoggerOpts{
 		Type:logger.LoggerFile,
 		Rotate: logger.LogRotateDaily,
 		FileName: accessLogPath,

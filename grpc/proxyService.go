@@ -1,4 +1,4 @@
-package gateway
+package grpc
 
 import (
 	"io"
@@ -7,12 +7,19 @@ import (
 	"encoding/json"
 	"sync"
 	"os"
+	"bytes"
 )
 
 var globalId uint64
 
+const (
+	ipcMsgTypeCall = iota
+	ipcMsgTypeReply
+)
+
 type IPCMessage struct {
 	id uint64
+	msgType int8
 	body []byte
 }
 
@@ -50,9 +57,47 @@ type ProxyServiceCall struct {
 	Params []byte `json:"params"`
 }
 
+func (psc *ProxyServiceCall) Marshal() (data []byte, err error) {
+	buff := bytes.NewBuffer(nil)
+	if _, err = buff.WriteString(psc.ServiceName); err != nil {
+		return
+	}
+	if err = buff.WriteByte(0); err != nil {
+		return
+	}
+
+	if _, err = buff.WriteString(psc.Method); err != nil {
+		return
+	}
+	if err = buff.WriteByte(0); err != nil {
+		return
+	}
+
+	if _, err = buff.Write(psc.Params); err != nil {
+		return
+	}
+
+	data = buff.Bytes()
+
+	return
+}
+
+func (psc *ProxyServiceCall) UnMarshal(rawData []byte) (err error) {
+	end := bytes.IndexByte(rawData, 0)
+	psc.ServiceName = string(rawData[:end])
+	s := end + 1
+	end = bytes.IndexByte(rawData[s:], 0)
+
+	psc.Method = string(rawData[s: s + end])
+	s = s + end + 1
+	psc.Params = rawData[s:]
+	return
+}
+
 type ProxyService struct {
 	reader io.Reader
 	writer io.Writer
+	ioReady chan int
 
 	callWaiter map[uint64]chan[]byte
 	callWaiterMu sync.Mutex
@@ -63,6 +108,7 @@ type ProxyService struct {
 func (sp *ProxyService) Attach(reader io.Reader, writer io.Writer) {
 	sp.reader = reader
 	sp.writer = writer
+	sp.ioReady <- 1
 }
 
 func (sp *ProxyService) writeMessage(msg *IPCMessage) (err error) {
@@ -71,6 +117,10 @@ func (sp *ProxyService) writeMessage(msg *IPCMessage) (err error) {
 	if err = binary.Write(sp.writer, binary.LittleEndian, msg.id); err != nil {
 		return
 	}
+	if err = binary.Write(sp.writer, binary.LittleEndian, msg.msgType); err != nil {
+		return
+	}
+
 	if err = binary.Write(sp.writer, binary.LittleEndian, size); err != nil {
 		return
 	}
@@ -80,6 +130,9 @@ func (sp *ProxyService) writeMessage(msg *IPCMessage) (err error) {
 
 func (sp *ProxyService) readMessage(msg *IPCMessage) (err error) {
 	if err = binary.Read(sp.reader, binary.LittleEndian, &msg.id); err != nil {
+		return
+	}
+	if err = binary.Read(sp.reader, binary.LittleEndian, &msg.msgType); err != nil {
 		return
 	}
 	var size int32
@@ -97,14 +150,21 @@ func (sp *ProxyService) readMessage(msg *IPCMessage) (err error) {
 
 func (sp *ProxyService) CallAsync(param interface{}) (retCh chan[]byte, err error) {
 	var paramData []byte
-	if paramData, err = json.Marshal(param); err != nil {
-		return
+	switch param.(type) {
+	case []byte:
+		paramData = param.([]byte)
+	default:
+		if paramData, err = json.Marshal(param); err != nil {
+			return
+		}
 	}
+
 	var msg IPCMessage
 	msg.SetId(0)
+	msg.msgType = ipcMsgTypeCall
 	msg.SetData(paramData)
 	sp.writeMessage(&msg)
-	retCh = make(chan[]byte)
+	retCh = make(chan[]byte, 1)
 	sp.callWaiterMu.Lock()
 	sp.callWaiter[msg.GetId()] = retCh
 	sp.callWaiterMu.Unlock()
@@ -141,36 +201,41 @@ func (sp *ProxyService) handleCall(callId uint64, data []byte) error {
 
 	var msg IPCMessage
 	msg.id = callId
+	msg.msgType = ipcMsgTypeReply
 	msg.body = retData
 	return sp.writeMessage(&msg)
 }
 
 func IPCCallHandler(proxy *ProxyService) {
+	<- proxy.ioReady
 	for {
 		var msg IPCMessage
 		if err := proxy.readMessage(&msg); err != nil {
 			// TODO:  错误处理，EOF?
 			return
 		}
-		proxy.callWaiterMu.Lock()
-		waiter, exist := proxy.callWaiter[msg.id]
-		if exist {
-			waiter <- msg.GetData()
-			delete(proxy.callWaiter, msg.id)
-		} else {
-			// dispatch
+
+		if msg.msgType == ipcMsgTypeCall {
 			err := proxy.handleCall(msg.id, msg.body)
 			if err != nil {
 				// TODO: 错误处理
 			}
+		} else {
+			proxy.callWaiterMu.Lock()
+			waiter, exist := proxy.callWaiter[msg.id]
+			if exist {
+				waiter <- msg.GetData()
+				delete(proxy.callWaiter, msg.id)
+			}
+			proxy.callWaiterMu.Unlock()
 		}
-		proxy.callWaiterMu.Unlock()
 	}
 }
 
 func NewServiceProxy() *ProxyService {
 	proxy := &ProxyService{
 		callWaiter: make(map[uint64]chan[]byte),
+		ioReady: make(chan int, 1),
 	}
 
 	go IPCCallHandler(proxy)
@@ -182,7 +247,8 @@ type ServiceCallHandler func(call *ProxyServiceCall) (data []byte, err error)
 func HandleServiceCall(proxyService *ProxyService, handler ServiceCallHandler) {
 	proxyService.OnCall(func(param []byte) (retData []byte, err error) {
 		var call ProxyServiceCall
-		if err = json.Unmarshal(param, &call); err != nil {
+
+		if err = call.UnMarshal(param); err != nil {
 			return
 		}
 		return handler(&call)
