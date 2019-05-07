@@ -17,7 +17,7 @@ func wait()(c chan os.Signal) {
 
 func main() {
 	proxy := grpc.InitServiceProxy()
-	proxy.CallSync(grpc.ProxyServiceRegMsg{ServiceNames: []string{"my-service"}})
+	grpc.RegisterService(proxy, "my-service")
 
 	grpc.HandleServiceCall(proxy, func(call *grpc.ProxyServiceCall) (data []byte, err error) {
 		//fmt.Println("Call Service:", call.ServiceName)

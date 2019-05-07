@@ -255,6 +255,11 @@ func HandleServiceCall(proxyService *ProxyService, handler ServiceCallHandler) {
 	})
 }
 
+func RegisterService(proxyService *ProxyService, serviceNames ...string) error {
+	_, err := proxyService.CallSync(ProxyServiceRegMsg{ServiceNames: serviceNames})
+	return err
+}
+
 func InitServiceProxy() *ProxyService {
 	proxy := NewServiceProxy()
 	proxy.Attach(os.Stdin, os.Stdout)
