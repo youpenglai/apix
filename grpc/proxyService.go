@@ -98,6 +98,7 @@ type ProxyService struct {
 	reader io.Reader
 	writer io.Writer
 	ioReady chan int
+	messageBuff chan *IPCMessage
 
 	callWaiter map[uint64]chan[]byte
 	callWaiterMu sync.Mutex
@@ -112,20 +113,8 @@ func (sp *ProxyService) Attach(reader io.Reader, writer io.Writer) {
 }
 
 func (sp *ProxyService) writeMessage(msg *IPCMessage) (err error) {
-	var size int32
-	size = int32(len(msg.body))
-	if err = binary.Write(sp.writer, binary.LittleEndian, msg.id); err != nil {
-		return
-	}
-	if err = binary.Write(sp.writer, binary.LittleEndian, msg.msgType); err != nil {
-		return
-	}
-
-	if err = binary.Write(sp.writer, binary.LittleEndian, size); err != nil {
-		return
-	}
-	err = binary.Write(sp.writer, binary.LittleEndian, msg.body)
-	return
+	sp.messageBuff <- msg
+	return nil
 }
 
 func (sp *ProxyService) readMessage(msg *IPCMessage) (err error) {
@@ -232,13 +221,38 @@ func IPCCallHandler(proxy *ProxyService) {
 	}
 }
 
+func writeMessageHandler(proxy *ProxyService) {
+	for {
+		var err error
+		var size int32
+
+		msg := <- proxy.messageBuff
+		size = int32(len(msg.body))
+		if err = binary.Write(proxy.writer, binary.LittleEndian, msg.id); err != nil {
+			return
+		}
+		if err = binary.Write(proxy.writer, binary.LittleEndian, msg.msgType); err != nil {
+			return
+		}
+
+		if err = binary.Write(proxy.writer, binary.LittleEndian, size); err != nil {
+			return
+		}
+		if err = binary.Write(proxy.writer, binary.LittleEndian, msg.body); err != nil {
+			return
+		}
+	}
+}
+
 func NewServiceProxy() *ProxyService {
 	proxy := &ProxyService{
 		callWaiter: make(map[uint64]chan[]byte),
 		ioReady: make(chan int, 1),
+		messageBuff: make(chan *IPCMessage, 1),
 	}
 
 	go IPCCallHandler(proxy)
+	go writeMessageHandler(proxy)
 	return proxy
 }
 

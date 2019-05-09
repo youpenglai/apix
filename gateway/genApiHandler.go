@@ -65,6 +65,14 @@ func (r *paramReader) Get(name, from string) (interface{}) {
 	return nil
 }
 
+func grpcHandler(ctx *apiXHttp.Context) {
+
+}
+
+func httpHandler(ctx *apiXHttp.Context) {
+	
+}
+
 // Api代码生成
 func GenApiHandle (block *apibuilder.ApiCodeBlock) (handler apiXHttp.Handler) {
 	return func(ctx *apiXHttp.Context) {

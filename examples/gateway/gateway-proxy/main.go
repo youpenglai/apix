@@ -22,7 +22,7 @@ func main() {
 	grpc.HandleServiceCall(proxy, func(call *grpc.ProxyServiceCall) (data []byte, err error) {
 		//fmt.Println("Call Service:", call.ServiceName)
 		//fmt.Println("Call method:", call.Method)
-		data, err = json.Marshal(map[string]bool{"success": true})
+		data, err = json.Marshal(map[string]interface{}{"success": true, "data": call.Params})
 		return
 	})
 

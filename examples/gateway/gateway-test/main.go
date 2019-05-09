@@ -18,7 +18,7 @@ func wait()(c chan os.Signal) {
 func main() {
 	// wait load completed
 	grpc.LoadAllProxy()
-	time.Sleep(20 * time.Second)
+	time.Sleep(5 * time.Second)
 	data, err := grpc.CallService("my-service", "hello", nil)
 	if err != nil {
 		fmt.Println("Err:", err)
