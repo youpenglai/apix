@@ -70,7 +70,7 @@ func grpcHandler(ctx *apiXHttp.Context) {
 }
 
 func httpHandler(ctx *apiXHttp.Context) {
-	
+
 }
 
 // Api代码生成

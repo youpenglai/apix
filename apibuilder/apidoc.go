@@ -8,30 +8,30 @@ import (
 
 const (
 	RETURN_TYPE_NOCONTENT = "nocontent"
-	RETURN_TYPE_JSON = "json"
-	RETURN_TYPE_FILE = "file"
+	RETURN_TYPE_JSON      = "json"
+	RETURN_TYPE_FILE      = "file"
 )
 
 var (
-	ErrNoDocVersion = errors.New("no doc version")
-	ErrNoBaseUrl = errors.New("no baseUrl")
-	ErrNoApis = errors.New("no apis")
-	ErrInvalidDataType = errors.New("invalid data type")
-	ErrNoMemberInDataType = errors.New("no member in data type")
-	ErrNoDataTypeName = errors.New("no data type name")
-	ErrInvalidDataTypeName = errors.New("invalid data type name")
-	ErrDuplicateDataType = errors.New("duplicate data type")
-	ErrInvalidApiDef = errors.New("invalid api definition")
-	ErrApiNoUrl = errors.New("api has no url")
-	ErrApiNoReturn = errors.New("api no return")
-	ErrApiUrlNotString = errors.New("api url is not string")
+	ErrNoDocVersion          = errors.New("no doc version")
+	ErrNoBaseUrl             = errors.New("no baseUrl")
+	ErrNoApis                = errors.New("no apis")
+	ErrInvalidDataType       = errors.New("invalid data type")
+	ErrNoMemberInDataType    = errors.New("no member in data type")
+	ErrNoDataTypeName        = errors.New("no data type name")
+	ErrInvalidDataTypeName   = errors.New("invalid data type name")
+	ErrDuplicateDataType     = errors.New("duplicate data type")
+	ErrInvalidApiDef         = errors.New("invalid api definition")
+	ErrApiNoUrl              = errors.New("api has no url")
+	ErrApiNoReturn           = errors.New("api no return")
+	ErrApiUrlNotString       = errors.New("api url is not string")
 	ErrReturnTypeUnsupported = errors.New("return type unsupported")
-	ErrInvalidMember = errors.New("invalid member")
-	ErrInvalidMemberAttr = errors.New("invalid member attributes")
-	ErrInvalidReturnDef = errors.New("invalid return definition")
-	ErrInvalidParamsDef = errors.New("invalid param definition")
-	ErrInvalidApiMethod = errors.New("invalid api method")
-	ErrDataTypeNotExist = errors.New("data type is not exist")
+	ErrInvalidMember         = errors.New("invalid member")
+	ErrInvalidMemberAttr     = errors.New("invalid member attributes")
+	ErrInvalidReturnDef      = errors.New("invalid return definition")
+	ErrInvalidParamsDef      = errors.New("invalid param definition")
+	ErrInvalidApiMethod      = errors.New("invalid api method")
+	ErrDataTypeNotExist      = errors.New("data type is not exist")
 )
 
 // API字段成员
@@ -77,18 +77,18 @@ func (t *DataType) MembersEach(eachFunc MemberEachFunc) {
 
 type AttrLength struct {
 	Checked bool
-	Value int
+	Value   int
 }
 
 // API字段成员属性
 type MemberAttr struct {
-	Type        string // 字段数据基本类型
-	IsArray     bool   // 是否为数组
-	Required    bool   // 是否为必须字段
-	Description string // 字段描述
-	Length      AttrLength	// 字段长度
-	MinLength   AttrLength    // 字段最小长度
-	MaxLength   AttrLength    // 字段长度
+	Type        string     // 字段数据基本类型
+	IsArray     bool       // 是否为数组
+	Required    bool       // 是否为必须字段
+	Description string     // 字段描述
+	Length      AttrLength // 字段长度
+	MinLength   AttrLength // 字段最小长度
+	MaxLength   AttrLength // 字段长度
 }
 
 func (ma *MemberAttr) load(attrs map[interface{}]interface{}) (err error) {
@@ -157,8 +157,8 @@ func (ma *MemberAttr) load(attrs map[interface{}]interface{}) (err error) {
 
 // API返回值
 type ApiReturn struct {
-	ReturnType string		// 返回类型
-	Data interface{} // 返回为JSON对象
+	ReturnType string      // 返回类型
+	Data       interface{} // 返回为JSON对象
 }
 
 type ApiParam struct {
@@ -166,32 +166,57 @@ type ApiParam struct {
 	From string
 }
 
+type RedisForward struct {
+	Key string
+	KeyFormat string
+	ValueType string
+}
+
+type HttpForward struct {
+	Url string
+	// TODO: 暂时不关心
+}
+
+type GRPCForward struct {
+	Method string
+	ParamMapper map[string]string
+}
+
+type ApiForwards struct {
+	TargetType string
+	Name string
+	Service string
+	TargetInfo interface{}
+	Deps []string
+}
+
 // API入口
 type ApiEntry struct {
-	Url         string             // API接口路径
-	Method      string             // API方法
-	Params      []*ApiParam // API参数映射
-	Returns     map[string]*ApiReturn  // API返回值
-	Description string             // API描述
+	Url         string                // API接口路径
+	Method      string                // API方法
+	Params      []*ApiParam           // API参数映射
+	Forwards    []*ApiForwards        // API转发
+	Returns     map[string]*ApiReturn // API返回值
+	Description string                // API描述
 }
 
 // API描述文档
 type ApiDoc struct {
-	Description    string               // API描述
-	Version string               // API版本（语义化版本）：major.minor.revision
-	BaseUrl string               // 基本URL
-	Apis    []*ApiEntry          // API入口
-	Types   map[string]*DataType // API中引用的数据类型定义
+	Description string               // API描述
+	Version     string               // API版本（语义化版本）：major.minor.revision
+	BaseUrl     string               // 基本URL
+	Apis        []*ApiEntry          // API入口
+	Types       map[string]*DataType // API中引用的数据类型定义
 }
 
 func NewApiDoc() *ApiDoc {
 	return &ApiDoc{
 		Types: make(map[string]*DataType),
-		Apis: make([]*ApiEntry, 0),
+		Apis:  make([]*ApiEntry, 0),
 	}
 }
 
-func (doc *ApiDoc) getDataType(name string) *DataType{
+func (doc *ApiDoc) getDataType(name string) *DataType {
 	dt, exists := doc.Types[name]
 	if exists {
 		return dt
@@ -244,7 +269,6 @@ func (doc *ApiDoc) Parse(content []byte) (err error) {
 
 	return
 }
-
 
 func (doc *ApiDoc) parseBaseInfo(d map[string]interface{}) (err error) {
 	// 文档描述
@@ -367,6 +391,114 @@ func parseApiParams(paramsDef map[interface{}]interface{}) (params []*ApiParam, 
 }
 
 
+func parseMapper(mapperVal interface{}) (mapper map[string]string, err error) {
+	m, ok := mapperVal.(map[interface{}]interface{})
+	if !ok {
+		// TODO: err
+		return
+	}
+
+	mapper = make(map[string]string)
+	for kv, vv := range m {
+		k := kv.(string)
+		v := vv.(string)
+		mapper[k] = v
+	}
+	return
+}
+
+func parseGrpc(rpcConf map[interface{}]interface{}) (grpc *GRPCForward, err error){
+	methodVal, hasMethod := rpcConf["method"]
+	if !hasMethod {
+		// TODO
+	}
+	method := methodVal.(string)
+
+	mapperVal, hasMapper := rpcConf["paramMapper"]
+	if !hasMapper {
+		// TODO
+	}
+	var mapper map[string]string
+	mapper, err = parseMapper(mapperVal)
+	if err != nil {
+		// TODO
+	}
+
+	grpc = &GRPCForward{}
+	grpc.Method = method
+	grpc.ParamMapper = mapper
+
+	return
+}
+
+func parseHttp() {}
+
+func parseRedis(redisConf map[interface{}]interface{}) (redis *RedisForward, err error){
+	redis = &RedisForward{}
+	keyVal, exists := redisConf["key"]
+	if !exists {
+		return
+	}
+	key, _ := keyVal.(string)
+	redis.Key = key
+
+	valTypeVal, exists := redisConf["type"]
+	if !exists {
+		valTypeVal = "string"
+	}
+	valType, _ := valTypeVal.(string)
+	redis.ValueType = valType
+
+	return
+}
+
+func parseApiForwards(forwardsDef []interface{}) (forwards []*ApiForwards, err error) {
+	for _, f := range forwardsDef {
+		 fDef, ok := f.(map[interface{}]interface{})
+		 if !ok {
+		 	// TODO: return
+		 }
+
+		 serviceNameVal, exists := fDef["service"]
+		 if !exists {
+		 	// TODO: err
+		 }
+		 serviceName := serviceNameVal.(string)
+		 nameVal, exists := fDef["name"]
+		 if !exists {
+		 	// TODO: err
+		 }
+		 name := nameVal.(string)
+
+		apiForward := &ApiForwards{Service:serviceName, Name:name}
+		 // 这里的实现其实应该有更好的模式
+		 // 暂时这样吧
+		 grpcDefVal, hasGrpc := fDef["grpc"]
+		 if hasGrpc {
+			if grpcDef, ok := grpcDefVal.(map[interface{}]interface{}); ok {
+				if apiForward.TargetInfo, err = parseGrpc(grpcDef); err != nil {
+					return
+				}
+			}
+		 }
+		 _, hasHttp := fDef["http"]
+		 if hasHttp {
+
+		 }
+		 redisDefVal, hasRedis := fDef["redis"]
+		 if hasRedis {
+			if redisDef, ok := redisDefVal.(map[interface{}]interface{}); ok {
+				if apiForward.TargetInfo, err = parseRedis(redisDef); err != nil {
+					return
+				}
+			}
+		 }
+
+		 forwards = append(forwards, apiForward)
+	}
+	return
+}
+
 func parseApiReturnData(apiReturn *ApiReturn, data interface{}) (err error) {
 	switch data.(type) {
 	case string:
@@ -459,15 +591,15 @@ func parseApiMapper() (err error) {
 	return
 }
 
-var httpMethods = map[string]bool {
-	"get": true,
-	"post": true,
-	"put": true,
-	"delete": true,
+var httpMethods = map[string]bool{
+	"get":     true,
+	"post":    true,
+	"put":     true,
+	"delete":  true,
 	"options": true,
-	"head": true,
-	"patch": true,
-	"trace": true,
+	"head":    true,
+	"patch":   true,
+	"trace":   true,
 }
 
 func checkMethod(method string) error {
@@ -517,6 +649,15 @@ func parseApi(apiDef map[interface{}]interface{}) (entry *ApiEntry, err error) {
 		entry.Params, err = parseApiParams(params)
 	}
 
+	forwards, hasForwards := apiDef["forwards"]
+	if hasForwards {
+		if entry.Forwards, err = parseApiForwards(forwards); err != nil {
+			// TODO
+		}
+
+	}
+	// TODO: 如果没有forwards，其实这个API就没有什么意义了
+
 	returnsVal, hasReturns := apiDef["returns"]
 	if !hasReturns {
 		err = ErrApiNoReturn
@@ -529,9 +670,6 @@ func parseApi(apiDef map[interface{}]interface{}) (entry *ApiEntry, err error) {
 	}
 
 	entry.Returns, err = parseApiReturns(returns)
-
-	// TODO: add api mapper
-	parseApiMapper()
 
 	return
 }
@@ -560,4 +698,3 @@ func (doc *ApiDoc) parseApis(apis []interface{}) (err error) {
 
 	return
 }
-
