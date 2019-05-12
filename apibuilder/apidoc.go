@@ -32,6 +32,7 @@ var (
 	ErrInvalidParamsDef      = errors.New("invalid param definition")
 	ErrInvalidApiMethod      = errors.New("invalid api method")
 	ErrDataTypeNotExist      = errors.New("data type is not exist")
+	ErrNormalizeMap          = errors.New("normalize map error")
 )
 
 // API字段成员
@@ -91,7 +92,7 @@ type MemberAttr struct {
 	MaxLength   AttrLength // 字段长度
 }
 
-func (ma *MemberAttr) load(attrs map[interface{}]interface{}) (err error) {
+func (ma *MemberAttr) load(attrs map[string]interface{}) (err error) {
 	t, hasType := attrs["type"]
 	if !hasType {
 		err = ErrNoDataTypeName
@@ -224,6 +225,23 @@ func (doc *ApiDoc) getDataType(name string) *DataType {
 	return nil
 }
 
+func normalizeMap(v interface{}) (ret map[string]interface{}, err error) {
+	var ok bool
+	if ret, ok = v.(map[string]interface{}); ok {
+		return
+	}
+
+	var t map[interface{}]interface{}
+	if t, ok = v.(map[interface{}]interface{}); ok {
+		ret = make(map[string]interface{})
+		for k, v := range t {
+			key := k.(string)
+			ret[key] = v
+		}
+	}
+	return
+}
+
 func (doc *ApiDoc) addDataType(dataType *DataType) (err error) {
 	_, exists := doc.Types[dataType.Name]
 	if exists {
@@ -294,27 +312,27 @@ func (doc *ApiDoc) parseBaseInfo(d map[string]interface{}) (err error) {
 	return
 }
 
-func parseDataTypeMembers(dataType *DataType, members map[interface{}]interface{}) (err error) {
+func parseDataTypeMembers(dataType *DataType, members map[string]interface{}) (err error) {
 	for name, attrs := range members {
-		mn := name.(string)
 		memberAttr := &MemberAttr{}
-		a, ok := attrs.(map[interface{}]interface{})
-		if !ok {
+		a, e := normalizeMap(attrs)
+		if e != nil {
 			err = ErrInvalidMemberAttr
+			return
 		}
 		err = memberAttr.load(a)
 		if err != nil {
 			return
 		}
-		dataType.AddMember(mn, memberAttr)
+		dataType.AddMember(name, memberAttr)
 	}
 	return
 }
 
 func (doc *ApiDoc) parseDataTypes(dataTypes []interface{}) (err error) {
 	for _, dt := range dataTypes {
-		dataTypeMeta, ok := dt.(map[interface{}]interface{})
-		if !ok {
+		dataTypeMeta, e := normalizeMap(dt)
+		if e != nil {
 			err = ErrInvalidDataType
 			return
 		}
@@ -334,8 +352,8 @@ func (doc *ApiDoc) parseDataTypes(dataTypes []interface{}) (err error) {
 			err = ErrNoMemberInDataType
 			return
 		}
-		dstMembers, ok := members.(map[interface{}]interface{})
-		if !ok {
+		dstMembers, e := normalizeMap(members)
+		if e != nil {
 			err = ErrInvalidMember
 			return
 		}
@@ -351,32 +369,31 @@ func (doc *ApiDoc) parseDataTypes(dataTypes []interface{}) (err error) {
 	return
 }
 
-func parseApiParamDetail(param *ApiParam, members map[interface{}]interface{}) (err error) {
+func parseApiParamDetail(param *ApiParam, members map[string]interface{}) (err error) {
 	param.Members = make(Members)
 	for memberName, memberAttr := range members {
-		mn, _ := memberName.(string)
 		attr := &MemberAttr{}
-		ma, ok := memberAttr.(map[interface{}]interface{})
-		if !ok {
+		ma, e := normalizeMap(memberAttr)
+		if e != nil {
 			err = ErrInvalidMemberAttr
 		}
 		err = attr.load(ma)
 		if err != nil {
 			return
 		}
-		param.Members[mn] = attr
+		param.Members[memberName] = attr
 	}
 	return
 }
 
 // 解析API参数
-func parseApiParams(paramsDef map[interface{}]interface{}) (params []*ApiParam, err error) {
+func parseApiParams(paramsDef map[string]interface{}) (params []*ApiParam, err error) {
 	for from, def := range paramsDef {
-		strFrom, _ := from.(string)
-		param := &ApiParam{From: strFrom}
 
-		d, ok := def.(map[interface{}]interface{})
-		if !ok {
+		param := &ApiParam{From: from}
+
+		d, e := normalizeMap(def)
+		if e != nil {
 			err = ErrInvalidParamsDef
 		}
 
@@ -392,22 +409,21 @@ func parseApiParams(paramsDef map[interface{}]interface{}) (params []*ApiParam, 
 
 
 func parseMapper(mapperVal interface{}) (mapper map[string]string, err error) {
-	m, ok := mapperVal.(map[interface{}]interface{})
-	if !ok {
+	m, e := normalizeMap(mapperVal)
+	if e != nil {
 		// TODO: err
 		return
 	}
 
 	mapper = make(map[string]string)
 	for kv, vv := range m {
-		k := kv.(string)
 		v := vv.(string)
-		mapper[k] = v
+		mapper[kv] = v
 	}
 	return
 }
 
-func parseGrpc(rpcConf map[interface{}]interface{}) (grpc *GRPCForward, err error){
+func parseGrpc(rpcConf map[string]interface{}) (grpc *GRPCForward, err error){
 	methodVal, hasMethod := rpcConf["method"]
 	if !hasMethod {
 		// TODO
@@ -433,7 +449,7 @@ func parseGrpc(rpcConf map[interface{}]interface{}) (grpc *GRPCForward, err erro
 
 func parseHttp() {}
 
-func parseRedis(redisConf map[interface{}]interface{}) (redis *RedisForward, err error){
+func parseRedis(redisConf map[string]interface{}) (redis *RedisForward, err error){
 	redis = &RedisForward{}
 	keyVal, exists := redisConf["key"]
 	if !exists {
@@ -475,22 +491,26 @@ func parseApiForwards(forwardsDef []interface{}) (forwards []*ApiForwards, err e
 		 // 暂时这样吧
 		 grpcDefVal, hasGrpc := fDef["grpc"]
 		 if hasGrpc {
-			if grpcDef, ok := grpcDefVal.(map[interface{}]interface{}); ok {
+			if grpcDef, e := normalizeMap(grpcDefVal); e == nil {
 				if apiForward.TargetInfo, err = parseGrpc(grpcDef); err != nil {
 					return
 				}
+			} else {
+				// TODO: err
 			}
 		 }
 		 _, hasHttp := fDef["http"]
 		 if hasHttp {
-
+		 	// TODO: 添加Http转发
 		 }
 		 redisDefVal, hasRedis := fDef["redis"]
 		 if hasRedis {
-			if redisDef, ok := redisDefVal.(map[interface{}]interface{}); ok {
+			if redisDef, e := normalizeMap(redisDefVal); e == nil {
 				if apiForward.TargetInfo, err = parseRedis(redisDef); err != nil {
 					return
 				}
+			} else {
+				// TODO: error
 			}
 		 }
 
@@ -508,24 +528,10 @@ func parseApiReturnData(apiReturn *ApiReturn, data interface{}) (err error) {
 		for memberName, memberAttr := range data.(map[interface{}]interface{}) {
 			attr := &MemberAttr{}
 
-			var a map[interface{}]interface{}
-			ok := true
-			switch memberAttr.(type) {
-			case map[interface{}]interface{}:
-				a = memberAttr.(map[interface{}]interface{})
-			case map[string]interface{}:
-				t := memberAttr.(map[string]interface{})
-				a = make(map[interface{}]interface{})
-				for key, attrVal := range t {
-					a[key] = attrVal
-				}
-			default:
-				ok = false
-			}
-
-			if !ok {
+			var a map[string]interface{}
+			var e error
+			if a, e = normalizeMap(memberAttr); e != nil {
 				err = ErrInvalidMemberAttr
-				return
 			}
 
 			err = attr.load(a)
@@ -543,13 +549,12 @@ func parseApiReturnData(apiReturn *ApiReturn, data interface{}) (err error) {
 }
 
 // 解析API的返回值
-func parseApiReturns(returnsDef map[interface{}]interface{}) (returns map[string]*ApiReturn, err error) {
+func parseApiReturns(returnsDef map[string]interface{}) (returns map[string]*ApiReturn, err error) {
 	returns = make(map[string]*ApiReturn)
-	for status, returnDef := range returnsDef {
-		statusCode := status.(string)
+	for statusCode, returnDef := range returnsDef {
 		ret := &ApiReturn{}
-		def, ok := returnDef.(map[interface{}]interface{})
-		if !ok {
+		def , e := normalizeMap(returnDef)
+		if e != nil {
 			err = ErrInvalidReturnDef
 			return
 		}
@@ -586,11 +591,6 @@ func parseApiReturns(returnsDef map[interface{}]interface{}) (returns map[string
 	return
 }
 
-//  解析API到服务的映射
-func parseApiMapper() (err error) {
-	return
-}
-
 var httpMethods = map[string]bool{
 	"get":     true,
 	"post":    true,
@@ -611,7 +611,7 @@ func checkMethod(method string) error {
 	return nil
 }
 
-func parseApi(apiDef map[interface{}]interface{}) (entry *ApiEntry, err error) {
+func parseApi(apiDef map[string]interface{}) (entry *ApiEntry, err error) {
 	entry = &ApiEntry{}
 
 	urlVal, hasUrl := apiDef["url"]
@@ -642,8 +642,8 @@ func parseApi(apiDef map[interface{}]interface{}) (entry *ApiEntry, err error) {
 	// 允许不存在参数的调用
 	paramsVal, hasParams := apiDef["params"]
 	if hasParams {
-		params, ok := paramsVal.(map[interface{}]interface{})
-		if !ok {
+		params, e := normalizeMap(paramsVal)
+		if e!= nil {
 			err = ErrInvalidParamsDef
 		}
 		entry.Params, err = parseApiParams(params)
@@ -651,7 +651,7 @@ func parseApi(apiDef map[interface{}]interface{}) (entry *ApiEntry, err error) {
 
 	forwards, hasForwards := apiDef["forwards"]
 	if hasForwards {
-		if entry.Forwards, err = parseApiForwards(forwards); err != nil {
+		if entry.Forwards, err = parseApiForwards(forwards.([]interface{})); err != nil {
 			// TODO
 		}
 
@@ -664,8 +664,8 @@ func parseApi(apiDef map[interface{}]interface{}) (entry *ApiEntry, err error) {
 		return
 	}
 
-	returns, ok := returnsVal.(map[interface{}]interface{})
-	if !ok {
+	returns, e := normalizeMap(returnsVal)
+	if e != nil {
 		err = ErrInvalidReturnDef
 	}
 
@@ -681,8 +681,8 @@ func (doc *ApiDoc) parseApis(apis []interface{}) (err error) {
 	}
 
 	for _, apiMeta := range apis {
-		api, ok := apiMeta.(map[interface{}]interface{})
-		if !ok {
+		api, e := normalizeMap(apiMeta)
+		if e != nil {
 			err = ErrInvalidApiDef
 			return
 		}

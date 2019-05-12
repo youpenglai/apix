@@ -1,0 +1,55 @@
+version: 1.0.0
+baseUrl: /api/
+description: 这是一个测试API文档
+types:
+  - name: TestType
+    description: 测试数据类型
+    members:
+      name:
+        type: string
+        required: true
+        minLength: 6
+      age:
+        type: integer
+        required: true
+      tags:
+        type: [string]
+apis:
+  - url: /grpc/test
+    description: GRPC测试
+    params:
+      body:
+        test:
+          type: TestType
+    forwards:
+      - name: grpc
+        service: grpc
+        grpc:
+          method: hello
+          paramMapper:
+            name: name
+            age: age
+            tags: tags
+    returns:
+      - "200":
+        description: 测试结果
+        type: json
+        data:
+          type: TestType
+  - url: /redis/test
+    description: Redis测试
+    params:
+      header:
+        token:
+          type: string
+    forwards:
+      - name: redis
+        service: redis
+        redis:
+          key: pl.{{token}}
+          type: string
+    returns:
+      - "200":
+        description: Redis测试
+        data:
+          token: string
