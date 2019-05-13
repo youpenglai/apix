@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"fmt"
 	"bytes"
+	"encoding/json"
+	"strings"
 )
 
 var (
@@ -15,6 +17,7 @@ var (
 	ErrValidationMinLength = errors.New("min-length error")
 	ErrValidationMaxLength = errors.New("max-length error")
 	ErrNestArrayNotImplemented = errors.New("nest array not implemented")
+	ErrForwardCircularDependency = errors.New("forward circular dependency")
 )
 
 // 参数读取/获取接口
@@ -24,9 +27,8 @@ type ParamReader interface {
 	Get(name, from string) interface{}
 }
 
-type ParamValues struct {
-	schema *ApiParam
-	reader ParamReader
+type ForwardImpl interface {
+	ForwardTo(dest *ApiForwards, mapper map[string]interface{}) (ret []byte, err error)
 }
 
 // 变量构造器
@@ -41,6 +43,7 @@ type Variable interface {
 	// 设置变量值
 	SetValue(interface{}) error
 	SetAttr(attr *MemberAttr)
+	ToMap() interface{}
 }
 
 // 变量基础属性
@@ -81,6 +84,10 @@ func (i *IntVar) SetValue(val interface{}) error {
 	return err
 }
 
+func (i *IntVar) ToMap() interface{} {
+	return i.val
+}
+
 func IntConstructor() Variable {
 	return &IntVar{}
 }
@@ -103,6 +110,10 @@ func (f *FloatVar) Validation() (err error) {
 func (f *FloatVar) SetValue(val interface{}) (err error) {
 	f.val, err = ToFloat(val)
 	return
+}
+
+func (f *FloatVar) ToMap() interface{} {
+	return f.val
 }
 
 func FloatConstructor() Variable {
@@ -153,6 +164,10 @@ func (sv *StringVar) SetValue(val interface{}) (err error) {
 	return
 }
 
+func (sv *StringVar) ToMap() interface{} {
+	return sv.val
+}
+
 // 布尔型变量
 type BooleanVar struct {
 	VariableBase
@@ -170,6 +185,10 @@ func (bv *BooleanVar) Validation() (err error) {
 func (bv *BooleanVar) SetValue(val interface{}) (err error) {
 	bv.val, err = ToBool(val)
 	return
+}
+
+func (bv *BooleanVar) ToMap() interface{} {
+	return bv.val
 }
 
 func BooleanConstructor() Variable {
@@ -273,6 +292,15 @@ func (av *ArrayVar) SetValue(val interface{}) (err error) {
 	return
 }
 
+func (av *ArrayVar) ToMap() interface{} {
+	ret := make([]interface{}, len(av.val))
+	for i, v := range av.val {
+		ret[i] = v
+	}
+
+	return ret
+}
+
 // 对象变量，同样是复合类型啊
 type ObjectVar struct {
 	VariableBase
@@ -347,6 +375,14 @@ func (ov *ObjectVar) SetValue(val interface{}) (err error) {
 	return
 }
 
+func (ov *ObjectVar) ToMap() interface{} {
+	ret := make(map[string]interface{})
+	for attrName, attrValue := range ov.Attrs {
+		ret[attrName] = attrValue.ToMap()
+	}
+	return ret
+}
+
 func ObjectConstructor() Variable {
 	return &ObjectVar{Attrs:make(map[string]Variable)}
 }
@@ -371,20 +407,30 @@ func (np *NilParam) SetAttr(attr *MemberAttr) {
 	// do nothing
 }
 
+func (np *NilParam) ToMap() interface{} {
+	return nil
+}
+
 // 参数变量
 type ParamVar Variable
 
 // Api接口代码块，每个接口生成一个代码块
 // 不是真正意义的代码块
 type ApiCodeBlock struct {
-	code *ApiCode
-	params []*ApiParam
+	code        *ApiCode
+	params      []*ApiParam
 	paramReader ParamReader
+	forwardImpl ForwardImpl
+	forwardsChain []*ApiForwards
 }
 
 // 绑定参数读取接口
 func (acb *ApiCodeBlock) BindParamReader(reader ParamReader) {
 	acb.paramReader = reader
+}
+
+func (acb *ApiCodeBlock) BindForwardImpl(forwards ForwardImpl) {
+	acb.forwardImpl = forwards
 }
 
 // 读取数据
@@ -436,8 +482,146 @@ func (acb *ApiCodeBlock) ReadParams() (param ParamVar, err error) {
 	return
 }
 
+type ForwardResult struct {
+	err error
+	data []byte
+	jsonCache map[string]interface{}
+}
+
+func getMapper(forwardInfo *ApiForwards) map[string]string {
+	mapper := make(map[string]string)
+
+	switch forwardInfo.TargetType {
+	case "grpc":
+		grpcForward := forwardInfo.TargetInfo.(*GRPCForward)
+		mapper = grpcForward.ParamMapper
+	case "redis":
+		redisForward := forwardInfo.TargetInfo.(*RedisForward)
+		mapper["key"] = redisForward.Key
+	case "http":
+		// TODO: http
+	}
+
+	return mapper
+}
+
+type paramSource struct {
+	from string
+	field string
+}
+
+func parseSrc(src string) (paramSrc []*paramSource, format string) {
+	v := strings.Split(src, "|")
+	if len(v) > 1 {
+		format = v[len(v) - 1]
+	}
+	tSrc := v[:len(v) - 1]
+	for _, t := range tSrc {
+		f := strings.Split(t, ".")
+		var p paramSource
+		if len(f) == 1 {
+			p.field = f[0]
+		} else {
+			p.field = f[1]
+			p.from = f[0]
+		}
+		paramSrc = append(paramSrc, &p)
+	}
+
+	return
+}
+
+func (acb *ApiCodeBlock) resolveForwardMapper(forward *ApiForwards, dest map[string]interface{},  preResults map[string]*ForwardResult, params map[string]interface{}) (err error) {
+	mapper := getMapper(forward)
+	for dst, src := range mapper {
+		paramSrcList, format := parseSrc(src)
+		var values []interface{}
+		for _, paramSrc := range paramSrcList {
+			if paramSrc.from == "" {
+				paramVal, _ := params[paramSrc.field]
+				values = append(values, paramVal)
+			} else {
+				paramVal, _ := preResults[paramSrc.from]
+				if paramVal.err != nil {
+					err = paramVal.err
+					return
+				}
+				if paramVal.jsonCache == nil {
+					if err = json.Unmarshal(paramVal.data, &paramVal.jsonCache); err != nil {
+						return
+					}
+				}
+				val, _ := paramVal.jsonCache[paramSrc.field]
+				values = append(values, val)
+			}
+		}
+
+		var to interface{}
+		if format == "" {
+			to = values[0]
+		} else {
+			to = fmt.Sprintf(format, values...)
+		}
+
+		dest[dst] = to
+	}
+	return
+}
+
+// 目前我们使用串行的方式来调用
+// 有些无依赖的其实可以使用并行来处理
+// 暂时不检查循环依赖的问题
+func (acb *ApiCodeBlock) doForward(forward *ApiForwards, forwardMap map[string]*ApiForwards, resultMap map[string]*ForwardResult, paramVar ParamVar) (err error){
+	// 优先解决依赖问题
+	if len(forward.Deps) > 0 {
+		for _, d := range forward.Deps {
+			dF, exist := forwardMap[d]
+			if !exist {
+				// TODO: err
+			}
+			_, exist = resultMap[d]
+			if !exist {
+				if err = acb.doForward(dF, forwardMap, resultMap, paramVar); err != nil {
+					return
+				}
+			}
+		}
+	}
+
+	// resolve mapper
+	paramMapper := make(map[string]interface{})
+	inParams := paramVar.ToMap().(map[string]interface{})
+	if err = acb.resolveForwardMapper(forward, paramMapper, resultMap, inParams); err != nil {
+		return
+	}
+
+	ret, e := acb.forwardImpl.ForwardTo(forward, paramMapper)
+	resultMap[forward.Name] = &ForwardResult{err: e, data: ret}
+
+	return
+}
+
+func (acb *ApiCodeBlock) DoForwards(paramVar ParamVar) (ret interface{}, err error) {
+	fMap := make(map[string]*ApiForwards)
+	for _, f := range acb.forwardsChain  {
+		fMap[f.Name] = f
+	}
+
+	fResult := make(map[string]*ForwardResult)
+	for _, f := range acb.forwardsChain {
+		if err = acb.doForward(f, fMap, fResult, paramVar); err != nil {
+			return
+		}
+	}
+
+	return
+}
+
 // 读取返回值
-func (acb *ApiCodeBlock) ReadReturn() {}
+func (acb *ApiCodeBlock) ReadReturn(retData []byte) (v map[string]interface{}, err error){
+	err = json.Unmarshal(retData, &v)
+	return
+}
 
 // 数据类型构造器
 // constructor: 构造函数
@@ -525,6 +709,7 @@ func GenApiCode(doc *ApiDoc) (code *ApiCode, err error){
 	for _, api := range doc.Apis {
 		block := &ApiCodeBlock{code: code}
 		block.params = api.Params
+		block.forwardsChain= api.Forwards
 		code.addApiEntry(api.Url, block)
 	}
 	return

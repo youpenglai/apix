@@ -169,7 +169,6 @@ type ApiParam struct {
 
 type RedisForward struct {
 	Key string
-	KeyFormat string
 	ValueType string
 }
 
@@ -495,6 +494,7 @@ func parseApiForwards(forwardsDef []interface{}) (forwards []*ApiForwards, err e
 				if apiForward.TargetInfo, err = parseGrpc(grpcDef); err != nil {
 					return
 				}
+				apiForward.TargetType = "grpc"
 			} else {
 				// TODO: err
 			}
@@ -509,6 +509,7 @@ func parseApiForwards(forwardsDef []interface{}) (forwards []*ApiForwards, err e
 				if apiForward.TargetInfo, err = parseRedis(redisDef); err != nil {
 					return
 				}
+				apiForward.TargetType = "redis"
 			} else {
 				// TODO: error
 			}

@@ -65,28 +65,55 @@ func (r *paramReader) Get(name, from string) (interface{}) {
 	return nil
 }
 
-func grpcHandler(ctx *apiXHttp.Context) {
+var forwardFuncs = map[string]func(string, interface{} , map[string]interface{})([]byte, error){
+	"grpc": func(service string, target interface{}, params map[string]interface{}) ([]byte, error) {
+		p, err := json.Marshal(params)
+		if err != nil {
+			return nil, err
+		}
 
+		grpcTarget := target.(apibuilder.GRPCForward)
+
+		result, err := CallGRPCService(service, grpcTarget.Method, p)
+		return result, err
+	},
+	"http": func(service string, target interface{}, i map[string]interface{}) ([]byte, error) {
+		return nil, nil
+	},
+	"redis": func(service string, target interface{}, keys map[string]interface{}) ([]byte, error) {
+		return nil, nil
+	},
 }
 
-func httpHandler(ctx *apiXHttp.Context) {
+type forwardImpl struct {}
 
+func (fi *forwardImpl) ForwardTo(dest *apibuilder.ApiForwards, mapper map[string]interface{}) (ret []byte, err error) {
+	ff, _ := forwardFuncs[dest.TargetType]
+	ret, err = ff(dest.Service, dest.TargetInfo, mapper)
+	return
 }
 
 // Api代码生成
-func GenApiHandle (block *apibuilder.ApiCodeBlock) (handler apiXHttp.Handler) {
+func GenApiHandle (code *apibuilder.ApiCodeBlock) (handler apiXHttp.Handler) {
 	return func(ctx *apiXHttp.Context) {
 		reader := &paramReader{ctx:ctx}
-		block.BindParamReader(reader)
-		params, err := block.ReadParams()
+		code.BindParamReader(reader)
+		code.BindForwardImpl(&forwardImpl{})
+		params, err := code.ReadParams()
 		if err != nil {
 			// TODO: params err
 		}
 
-		err = params.Validation()
+		if err = params.Validation(); err != nil {
+			// TODO: err process
+		}
 
-		ctx.WriteString(200, "Api Handle")
-		//ctx.Next()
+		var ret interface{}
+		if ret, err = code.DoForwards(params); err != nil {
+			ctx.JSON(500, map[string]interface{}{"success": false})
+		} else {
+			ctx.JSON(200, ret)
+		}
 	}
 }
 
