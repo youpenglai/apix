@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/youpenglai/apix/grpc"
+	"github.com/youpenglai/apix/proxy"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,9 +17,9 @@ func wait()(c chan os.Signal) {
 
 func main() {
 	// wait load completed
-	grpc.LoadAllProxy()
+	proxy.LoadAllProxy()
 	time.Sleep(5 * time.Second)
-	data, err := grpc.CallService("my-service", "hello", nil)
+	data, err := proxy.CallService("my-service", "hello", nil)
 	if err != nil {
 		fmt.Println("Err:", err)
 		return

@@ -47,6 +47,7 @@ apis:
         service: redis
         redis:
           key: token|pl.%s
+          # type: string, hash etc...
           type: string
     returns:
       - "200":

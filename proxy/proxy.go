@@ -1,4 +1,4 @@
-package grpc
+package proxy
 
 import (
 	"os"
@@ -30,13 +30,18 @@ func startProxyProcess(proxyExe string) {
 	proxySvc := NewServiceProxy()
 	proxySvc.Attach(reader, writer)
 	proxySvc.OnCall(func(param []byte) (retData []byte, err error) {
-		var registerMsg ProxyServiceRegMsg
-		if err = json.Unmarshal(param, &registerMsg); err != nil {
+		var serviceMsg ProxyServiceMsg
+		if err = json.Unmarshal(param, &serviceMsg); err != nil {
 			return
 		}
-		for _, svcName := range registerMsg.ServiceNames {
-			serviceProxy[svcName] = proxySvc
+		if serviceMsg.Type == ServiceMsgTypeRegister {
+			for _, svcName := range serviceMsg.ServiceNames {
+				serviceProxy[svcName] = proxySvc
+			}
+		} else {
+
 		}
+
 		return
 	})
 

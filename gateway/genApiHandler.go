@@ -74,13 +74,20 @@ var forwardFuncs = map[string]func(string, interface{} , map[string]interface{})
 
 		grpcTarget := target.(apibuilder.GRPCForward)
 
-		result, err := CallGRPCService(service, grpcTarget.Method, p)
+		result, err := CallService(service, grpcTarget.Method, p)
 		return result, err
 	},
 	"http": func(service string, target interface{}, i map[string]interface{}) ([]byte, error) {
 		return nil, nil
 	},
 	"redis": func(service string, target interface{}, keys map[string]interface{}) ([]byte, error) {
+		p, err := json.Marshal(keys)
+		if err != nil {
+			return nil, err
+		}
+
+		//redisTarget := target.(apibuilder.RedisForward)
+		CallService(service, "", p)
 		return nil, nil
 	},
 }
