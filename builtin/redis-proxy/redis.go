@@ -18,6 +18,7 @@ const (
 	ENV_REDIS_SERVICE_NAME = "REDIS_SERVICE_NAME"
 
 	DEFAULT_REDIS_SERVICE_NAME = "redis"
+	DEFAULT_REDIS_ADDR = "127.0.0.1:6379"
 )
 
 func getRedisServiceName() string {
@@ -52,12 +53,17 @@ func getRedisConfFromEnv() (addr, pwd string, db int, err error) {
 	return
 }
 
-func getRedisConf() (addr, pwd string, db int, err error) {
+func getRedisConf() (addr, pwd string, db int) {
+	var err error
 	addr, pwd, db, err = getRedisConfFromConsul()
 	if err == nil {
 		return
 	}
 	addr, pwd, db, err = getRedisConfFromEnv()
+	if err != nil {
+		addr = DEFAULT_REDIS_ADDR
+		db = 0
+	}
 	return
 }
 
@@ -69,11 +75,36 @@ func wait()(c chan os.Signal) {
 
 var redisPool *redis.Pool
 
-func main() {
-	addr, pwd, db, err := getRedisConf()
-	if err != nil {
-		panic("Read redis config failure!")
+func getCmd(valType string) string {
+	switch valType {
+	case "string":
+		return "GET"
+	case "hash":
+		return "HGETALL"
 	}
+	return "GET"
+}
+
+func redisGet(valType, key string, expires time.Duration) (val interface{}, err error) {
+	conn := redisPool.Get()
+	defer conn.Close()
+
+	cmd := getCmd(valType)
+
+	if val, err = conn.Do(cmd, key); err != nil {
+		return
+	}
+
+	if expires > 0 {
+		_, err = conn.Do("EXPIRE", key, int(expires / time.Second))
+	}
+
+	return
+}
+
+func main() {
+	var err error
+	addr, pwd, db := getRedisConf()
 
 	redisPool = &redis.Pool{
 		Dial: func() (redis.Conn, error) {
@@ -107,7 +138,7 @@ func main() {
 	}
 
 	proxy.HandleServiceCall(proxyInst, func(call *proxy.ProxyServiceCall) (data []byte, err error) {
-		
+
 		return
 	})
 

@@ -601,10 +601,15 @@ func (acb *ApiCodeBlock) doForward(forward *ApiForwards, forwardMap map[string]*
 	return
 }
 
+// 执行转发
+// 我们执行时需要按顺序执行，最后要执行的一定要放在最后
+// 中间执行的则不受此限制
 func (acb *ApiCodeBlock) DoForwards(paramVar ParamVar) (ret interface{}, err error) {
 	fMap := make(map[string]*ApiForwards)
+	var finalName string
 	for _, f := range acb.forwardsChain  {
 		fMap[f.Name] = f
+		finalName = f.Name
 	}
 
 	fResult := make(map[string]*ForwardResult)
@@ -613,6 +618,9 @@ func (acb *ApiCodeBlock) DoForwards(paramVar ParamVar) (ret interface{}, err err
 			return
 		}
 	}
+
+	ret = fResult[finalName].data
+	err = fResult[finalName].err
 
 	return
 }
