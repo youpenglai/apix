@@ -30,6 +30,8 @@ apis:
             name: name
             age: age
             tags: tags
+        test: test
+        onfail: reject
     returns:
       - "200":
         description: 测试结果

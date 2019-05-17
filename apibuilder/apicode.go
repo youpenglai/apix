@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"strings"
+	"reflect"
 )
 
 var (
@@ -422,6 +423,14 @@ type ApiCodeBlock struct {
 	paramReader ParamReader
 	forwardImpl ForwardImpl
 	forwardsChain []*ApiForwards
+
+	//paramsMapper map[string]map[string]string
+}
+
+func NewApiCodeBlock(code *ApiCode) *ApiCodeBlock {
+	acb := &ApiCodeBlock{code: code}
+	//acb.paramsMapper = make(map[string]map[string]string)
+	return acb
 }
 
 // 绑定参数读取接口
@@ -498,6 +507,7 @@ func getMapper(forwardInfo *ApiForwards) map[string]string {
 	case "redis":
 		redisForward := forwardInfo.TargetInfo.(*RedisForward)
 		mapper["key"] = redisForward.Key
+		mapper["valType"] = redisForward.ValueType
 	case "http":
 		// TODO: http
 	}
@@ -531,17 +541,139 @@ func parseSrc(src string) (paramSrc []*paramSource, format string) {
 	return
 }
 
-func (acb *ApiCodeBlock) resolveForwardMapper(forward *ApiForwards, dest map[string]interface{},  preResults map[string]*ForwardResult, params map[string]interface{}) (err error) {
+// 职责连模式
+type ForwardContext struct {
+	codeCtx *ApiCodeBlock
+	forwardChain []*ApiForwards
+	curForward *ApiForwards
+	resultMap map[string]*ForwardResult
+	params map[string]interface{}
+}
+
+func NewForwardContext(code *ApiCodeBlock, params map[string]interface{}, forwardChain []*ApiForwards) *ForwardContext {
+	return &ForwardContext{codeCtx: code,
+		resultMap: make(map[string]*ForwardResult),
+		params:params,
+		forwardChain:forwardChain,
+	}
+}
+
+func (fc *ForwardContext) StoreResult(result *ForwardResult) {
+	fc.resultMap[fc.curForward.Name] = result
+}
+
+func opEQ(src, dest interface{}) bool {
+	srcV := reflect.ValueOf(src)
+	destV := reflect.ValueOf(dest)
+	if srcV.Kind() != destV.Kind() {
+		return false
+	}
+	switch src.(type) {
+	case string:
+		return src.(string) == dest.(string)
+	case int8, int16, int32, int64, int:
+		return srcV.Int() == destV.Int()
+	// uint8, uint16,uint32, uint64, uint
+	case float32, float64:
+		return srcV.Float() == destV.Float()
+	case bool:
+		return src.(bool) == dest.(bool)
+	}
+	return false
+}
+
+func opNEQ(src, dest interface{}) bool {
+	return !opEQ(src, dest)
+}
+
+func opGT(src, dest interface{}) bool {
+
+}
+
+func opGTE(src, dest interface{}) bool {
+
+}
+
+func opLT(src, dest interface{}) bool {
+	return !opGTE(src, dest)
+}
+
+func opLTE(src, dest interface{}) bool {
+	return !opGT(src, dest)
+}
+
+func TestExec(testDef map[string]interface{}, target map[string]interface{}) (bool) {
+
+}
+
+// 只支持JSON格式的校验
+func (fc *ForwardContext) TestResult(result *ForwardResult) (bool) {
+	if result.err != nil {
+		return false
+	}
+
+	if fc.curForward.Test == nil {
+		return true
+	}
+
+	var data map[string]interface{}
+	if result.jsonCache != nil {
+		data = result.jsonCache
+	} else {
+		if err := json.Unmarshal(result.data, &data); err != nil {
+			return false
+		}
+	}
+
+	return TestExec(fc.curForward.Test, data)
+}
+
+func (fc *ForwardContext) doForward() (result *ForwardResult, err error) {
+	params := make(map[string]interface{})
+	if err = fc.resolveForwardMapper(fc.curForward, params); err != nil {
+		return
+	}
+	var ret []byte
+	if ret, err = fc.codeCtx.forwardImpl.ForwardTo(fc.curForward, params); err != nil {
+		return
+	}
+	result = &ForwardResult{err:err, data:ret}
+	return
+}
+
+func (fc *ForwardContext) DoForward() (data []byte, err error) {
+	var result *ForwardResult
+	for i := 0; i < len(fc.forwardChain); i++ {
+		fc.curForward = fc.forwardChain[i]
+
+		result, err = fc.doForward()
+		if err != nil {
+			// TODO: err process
+		}
+		success := fc.TestResult(result)
+		if !success {
+
+		}
+		fc.StoreResult(result)
+	}
+
+	if result != nil {
+		return result.data, result.err
+	}
+	return
+}
+
+func (fc *ForwardContext) resolveForwardMapper(forward *ApiForwards, dest map[string]interface{}) (err error) {
 	mapper := getMapper(forward)
 	for dst, src := range mapper {
 		paramSrcList, format := parseSrc(src)
 		var values []interface{}
 		for _, paramSrc := range paramSrcList {
 			if paramSrc.from == "" {
-				paramVal, _ := params[paramSrc.field]
+				paramVal, _ := fc.params[paramSrc.field]
 				values = append(values, paramVal)
 			} else {
-				paramVal, _ := preResults[paramSrc.from]
+				paramVal, _ := fc.resultMap[paramSrc.from]
 				if paramVal.err != nil {
 					err = paramVal.err
 					return
@@ -568,60 +700,12 @@ func (acb *ApiCodeBlock) resolveForwardMapper(forward *ApiForwards, dest map[str
 	return
 }
 
-// 目前我们使用串行的方式来调用
-// 有些无依赖的其实可以使用并行来处理
-// 暂时不检查循环依赖的问题
-func (acb *ApiCodeBlock) doForward(forward *ApiForwards, forwardMap map[string]*ApiForwards, resultMap map[string]*ForwardResult, paramVar ParamVar) (err error){
-	// 优先解决依赖问题
-	if len(forward.Deps) > 0 {
-		for _, d := range forward.Deps {
-			dF, exist := forwardMap[d]
-			if !exist {
-				// TODO: err
-			}
-			_, exist = resultMap[d]
-			if !exist {
-				if err = acb.doForward(dF, forwardMap, resultMap, paramVar); err != nil {
-					return
-				}
-			}
-		}
-	}
-
-	// resolve mapper
-	paramMapper := make(map[string]interface{})
-	inParams := paramVar.ToMap().(map[string]interface{})
-	if err = acb.resolveForwardMapper(forward, paramMapper, resultMap, inParams); err != nil {
-		return
-	}
-
-	ret, e := acb.forwardImpl.ForwardTo(forward, paramMapper)
-	resultMap[forward.Name] = &ForwardResult{err: e, data: ret}
-
-	return
-}
-
 // 执行转发
 // 我们执行时需要按顺序执行，最后要执行的一定要放在最后
 // 中间执行的则不受此限制
 func (acb *ApiCodeBlock) DoForwards(paramVar ParamVar) (ret interface{}, err error) {
-	fMap := make(map[string]*ApiForwards)
-	var finalName string
-	for _, f := range acb.forwardsChain  {
-		fMap[f.Name] = f
-		finalName = f.Name
-	}
-
-	fResult := make(map[string]*ForwardResult)
-	for _, f := range acb.forwardsChain {
-		if err = acb.doForward(f, fMap, fResult, paramVar); err != nil {
-			return
-		}
-	}
-
-	ret = fResult[finalName].data
-	err = fResult[finalName].err
-
+	fc := NewForwardContext(acb, paramVar.ToMap().(map[string]interface{}), acb.forwardsChain)
+	ret, err = fc.DoForward()
 	return
 }
 
@@ -715,7 +799,7 @@ func GenApiCode(doc *ApiDoc) (code *ApiCode, err error){
 	}
 
 	for _, api := range doc.Apis {
-		block := &ApiCodeBlock{code: code}
+		block := NewApiCodeBlock(code)
 		block.params = api.Params
 		block.forwardsChain= api.Forwards
 		code.addApiEntry(api.Url, block)

@@ -10,6 +10,9 @@ const (
 	RETURN_TYPE_NOCONTENT = "nocontent"
 	RETURN_TYPE_JSON      = "json"
 	RETURN_TYPE_FILE      = "file"
+
+	ON_FAIL_ACTION_CONTINUE = "continue"
+	ON_FAIL_ACTION_REJECT = "reject"
 )
 
 var (
@@ -188,6 +191,8 @@ type ApiForwards struct {
 	Service string
 	TargetInfo interface{}
 	Deps []string
+	Test map[string]interface{}
+	OnFail string
 }
 
 // API入口
@@ -484,8 +489,13 @@ func parseApiForwards(forwardsDef []interface{}) (forwards []*ApiForwards, err e
 		 	// TODO: err
 		 }
 		 name := nameVal.(string)
+		 onFailActionVal, exists := fDef["onfail"]
+		 onFailAction := ON_FAIL_ACTION_CONTINUE
+		 if exists {
+		 	onFailAction = onFailActionVal.(string)
+		 }
 
-		apiForward := &ApiForwards{Service:serviceName, Name:name}
+		apiForward := &ApiForwards{Service:serviceName, Name:name, OnFail: onFailAction}
 		 // 这里的实现其实应该有更好的模式
 		 // 暂时这样吧
 		 grpcDefVal, hasGrpc := fDef["grpc"]
@@ -514,6 +524,13 @@ func parseApiForwards(forwardsDef []interface{}) (forwards []*ApiForwards, err e
 				// TODO: error
 			}
 		 }
+		 testVal, hasTest := fDef["test"]
+		 if hasTest {
+		 	if testDef, e := normalizeMap(testVal); e == nil {
+				apiForward.Test = testDef
+			}
+		 }
+
 
 		 forwards = append(forwards, apiForward)
 	}
