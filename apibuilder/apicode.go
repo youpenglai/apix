@@ -44,7 +44,7 @@ type Variable interface {
 	// 设置变量值
 	SetValue(interface{}) error
 	SetAttr(attr *MemberAttr)
-	ToMap() interface{}
+	ToRaw() interface{}
 }
 
 // 变量基础属性
@@ -85,7 +85,7 @@ func (i *IntVar) SetValue(val interface{}) error {
 	return err
 }
 
-func (i *IntVar) ToMap() interface{} {
+func (i *IntVar) ToRaw() interface{} {
 	return i.val
 }
 
@@ -113,7 +113,7 @@ func (f *FloatVar) SetValue(val interface{}) (err error) {
 	return
 }
 
-func (f *FloatVar) ToMap() interface{} {
+func (f *FloatVar) ToRaw() interface{} {
 	return f.val
 }
 
@@ -165,7 +165,7 @@ func (sv *StringVar) SetValue(val interface{}) (err error) {
 	return
 }
 
-func (sv *StringVar) ToMap() interface{} {
+func (sv *StringVar) ToRaw() interface{} {
 	return sv.val
 }
 
@@ -188,7 +188,7 @@ func (bv *BooleanVar) SetValue(val interface{}) (err error) {
 	return
 }
 
-func (bv *BooleanVar) ToMap() interface{} {
+func (bv *BooleanVar) ToRaw() interface{} {
 	return bv.val
 }
 
@@ -288,15 +288,16 @@ func (av *ArrayVar) SetValue(val interface{}) (err error) {
 		}
 
 		v.SetValue(item)
+		av.val = append(av.val, v)
 	}
 
 	return
 }
 
-func (av *ArrayVar) ToMap() interface{} {
+func (av *ArrayVar) ToRaw() interface{} {
 	ret := make([]interface{}, len(av.val))
 	for i, v := range av.val {
-		ret[i] = v
+		ret[i] = v.ToRaw()
 	}
 
 	return ret
@@ -376,10 +377,10 @@ func (ov *ObjectVar) SetValue(val interface{}) (err error) {
 	return
 }
 
-func (ov *ObjectVar) ToMap() interface{} {
+func (ov *ObjectVar) ToRaw() interface{} {
 	ret := make(map[string]interface{})
 	for attrName, attrValue := range ov.Attrs {
-		ret[attrName] = attrValue.ToMap()
+		ret[attrName] = attrValue.ToRaw()
 	}
 	return ret
 }
@@ -408,7 +409,7 @@ func (np *NilParam) SetAttr(attr *MemberAttr) {
 	// do nothing
 }
 
-func (np *NilParam) ToMap() interface{} {
+func (np *NilParam) ToRaw() interface{} {
 	return nil
 }
 
@@ -460,8 +461,8 @@ func readData(code *ApiCode, val interface{}, attr *MemberAttr) (v Variable, err
 			ov.setCode(code)
 		}
 	}
-	v.SetValue(val)
 	v.SetAttr(attr)
+	v.SetValue(val)
 	return
 }
 
@@ -522,10 +523,14 @@ type paramSource struct {
 
 func parseSrc(src string) (paramSrc []*paramSource, format string) {
 	v := strings.Split(src, "|")
+	var tSrc []string
 	if len(v) > 1 {
 		format = v[len(v) - 1]
+		tSrc = v[:len(v) - 1]
+	} else {
+		tSrc = v
 	}
-	tSrc := v[:len(v) - 1]
+
 	for _, t := range tSrc {
 		f := strings.Split(t, ".")
 		var p paramSource
@@ -562,6 +567,11 @@ func (fc *ForwardContext) StoreResult(result *ForwardResult) {
 	fc.resultMap[fc.curForward.Name] = result
 }
 
+// TODO: 数字类型的比较
+// 针对下面所有的比较操作，对于数字类型的值的比较都将以src操作数的类型为标准
+// dest的类型应首先转换为src的类型后再做比较
+// 这种情况主要针对于json在反序列化后会以浮点数来表示数字的值
+//
 func opEQ(src, dest interface{}) bool {
 	srcV := reflect.ValueOf(src)
 	destV := reflect.ValueOf(dest)
@@ -587,11 +597,41 @@ func opNEQ(src, dest interface{}) bool {
 }
 
 func opGT(src, dest interface{}) bool {
-
+	srcV := reflect.ValueOf(src)
+	destV := reflect.ValueOf(dest)
+	if srcV.Kind() != destV.Kind() {
+		return false
+	}
+	switch src.(type) {
+	case string:
+		return srcV.String() > destV.String()
+	case int8, int16, int32, int64, int:
+		return srcV.Int() > destV.Int()
+	case float32, float64:
+		return srcV.Float() > destV.Float()
+	case bool:
+		return false
+	}
+	return false
 }
 
 func opGTE(src, dest interface{}) bool {
-
+	srcV := reflect.ValueOf(src)
+	destV := reflect.ValueOf(dest)
+	if srcV.Kind() != destV.Kind() {
+		return false
+	}
+	switch src.(type) {
+	case string:
+		return srcV.String() >= destV.String()
+	case int8, int16, int32, int64, int:
+		return srcV.Int() >= destV.Int()
+	case float32, float64:
+		return srcV.Float() >= destV.Float()
+	case bool:
+		return false
+	}
+	return false
 }
 
 func opLT(src, dest interface{}) bool {
@@ -602,8 +642,125 @@ func opLTE(src, dest interface{}) bool {
 	return !opGT(src, dest)
 }
 
-func TestExec(testDef map[string]interface{}, target map[string]interface{}) (bool) {
+func opAnd(values ...bool) bool {
+	for _, b := range values {
+		if !b {
+			return false
+		}
+	}
+	return true
+}
 
+func opOr(values ...bool) bool {
+	for _, b := range values {
+		if b {
+			return true
+		}
+	}
+	return false
+}
+
+type RetData map[string]interface{}
+
+var (
+	errGetRetData = errors.New("get value data ")
+	errGetRetDataInvalidPath = errors.New("invalid path")
+)
+
+func (r RetData) GetValue(qPath string) (val interface{}, err error){
+	entries := strings.Split(qPath, ".")
+	if len(entries) == 0 {
+		err = errGetRetDataInvalidPath
+		return
+	}
+	cur := r
+	isLeaf := false
+	for _, entry := range entries {
+		if isLeaf {
+			err = errGetRetDataInvalidPath
+			return
+		}
+		t, e := cur[entry]
+		if !e {
+			err = errGetRetDataInvalidPath
+			return
+		}
+		var ok bool
+		if cur, ok = t.(map[string]interface{}); !ok {
+			isLeaf = true
+			val = t
+		}
+	}
+	return
+}
+
+func runCmp(testDef map[string]interface{}, target RetData, cmpOp string) (results []bool) {
+	for op, val := range testDef {
+		targetVal, err := target.GetValue(op)
+		if err != nil {
+			// TODO: err
+			results = append(results, false)
+			return
+		}
+		switch cmpOp {
+		case "$eq":
+			results = append(results, opEQ(val, targetVal))
+		case "$neq":
+			results = append(results, opNEQ(val, targetVal))
+		case "$gt":
+			results = append(results, opGT(val, targetVal))
+		case "$gte":
+			results = append(results, opGTE(val, targetVal))
+		case "$lt":
+			results = append(results, opLT(val, targetVal))
+		case "$lte":
+			results = append(results, opLTE(val, targetVal))
+		}
+	}
+	return
+}
+
+func runTest(testDef map[string]interface{}, target RetData) (results []bool) {
+	for op, arg := range testDef {
+		switch op {
+		case "$and":
+			andOps, err := normalizeMap(arg)
+			if err != nil {
+				results = append(results, false)
+				continue
+			}
+			rs := runTest(andOps, target)
+			results = append(results, opAnd(rs...))
+		case "$or":
+			orOps, err := normalizeMap(arg)
+			if err != nil {
+				results = append(results, false)
+				continue
+			}
+			rs := runTest(orOps, target)
+			results = append(results, opOr(rs...))
+		case "$eq","$neq","$gt","$gte","$lt","$lte":
+			cmpArgs, err := normalizeMap(arg)
+			if err != nil {
+				results = append(results, false)
+				continue
+			}
+			results = append(results, opAnd(runCmp(cmpArgs, target, op)...))
+		default:
+			targetVal, err := target.GetValue(op)
+			if err != nil {
+				// TODO: err
+				results = append(results, false)
+			} else {
+				results = append(results, opEQ(arg, targetVal))
+			}
+		}
+	}
+	return
+}
+
+func TestExec(testDef map[string]interface{}, target RetData) (bool) {
+	return opAnd(runTest(testDef, target)...)
 }
 
 // 只支持JSON格式的校验
@@ -649,10 +806,17 @@ func (fc *ForwardContext) DoForward() (data []byte, err error) {
 		result, err = fc.doForward()
 		if err != nil {
 			// TODO: err process
+			// 如果是reject，则终止
+			if fc.curForward.OnFail == "reject" {
+				break
+			}
 		}
 		success := fc.TestResult(result)
 		if !success {
-
+			// 如果是reject，则终止
+			if fc.curForward.OnFail == "reject" {
+				break
+			}
 		}
 		fc.StoreResult(result)
 	}
@@ -704,7 +868,7 @@ func (fc *ForwardContext) resolveForwardMapper(forward *ApiForwards, dest map[st
 // 我们执行时需要按顺序执行，最后要执行的一定要放在最后
 // 中间执行的则不受此限制
 func (acb *ApiCodeBlock) DoForwards(paramVar ParamVar) (ret interface{}, err error) {
-	fc := NewForwardContext(acb, paramVar.ToMap().(map[string]interface{}), acb.forwardsChain)
+	fc := NewForwardContext(acb, paramVar.ToRaw().(map[string]interface{}), acb.forwardsChain)
 	ret, err = fc.DoForward()
 	return
 }

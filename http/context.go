@@ -146,6 +146,11 @@ func (c *Context) JSON(statusCode int, obj interface{}) error {
 	return c.Write(statusCode, data)
 }
 
+func (c *Context) RawBytes(statusCode int, contentType string, data []byte) error {
+	c.SetHeader("Content-Type", contentType)
+	return c.Write(statusCode, data)
+}
+
 type WriteFileHandler func(w io.Writer) error
 
 func (c *Context) WriteFile(fileName string, writerHandler WriteFileHandler) error {

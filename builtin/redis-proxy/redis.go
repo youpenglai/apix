@@ -1,15 +1,15 @@
 package main
 
 import (
-	"os"
-	"github.com/youpenglai/mfwgo/registry"
 	"errors"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
-	"time"
 	"github.com/youpenglai/apix/proxy"
+	"github.com/youpenglai/mfwgo/registry"
+	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 const (
@@ -37,7 +37,10 @@ func getRedisConfFromConsul() (addr, pwd string, db int, err error) {
 		return
 	}
 
-	// TODO: 从consul中读取Redis的配置信息
+	pwdData, e := registry.ReadConf(fmt.Sprintf("%s/config/pwd", serviceName))
+	if e == nil {
+		pwd = string(pwdData)
+	}
 
 	addr = fmt.Sprintf("%s:%d", serviceInfo.Address, serviceInfo.Port)
 	return
@@ -138,7 +141,7 @@ func main() {
 	}
 
 	proxy.HandleServiceCall(proxyInst, func(call *proxy.ProxyServiceCall) (data []byte, err error) {
-
+		data = []byte(`{"userId":1}`)
 		return
 	})
 

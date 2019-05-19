@@ -51,3 +51,21 @@ func TestGenApiCode(t *testing.T) {
 	err = params.Validation()
 	t.Log("error:", err.Error())
 }
+
+func TestTestExec(t *testing.T) {
+	def := map[string]interface{} {
+		"name": "wsh",
+		"$eq": map[string]interface{}{
+			"age": 32,
+		},
+	}
+	target := map[string]interface{} {
+		"name": "wsh",
+		"age": 32,
+	}
+
+	success := TestExec(def, target)
+	if !success {
+		t.Error("verify fail:", success)
+	}
+}

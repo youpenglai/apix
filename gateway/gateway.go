@@ -85,7 +85,7 @@ func (g *ApiGateway) installApi(doc *apibuilder.ApiDoc) (err error) {
 		case "post":
 			g.httpServer.Post(dstUrl, GenApiHandle(codeBlock))
 		case "delete":
-			g.httpServer.Put(dstUrl, GenApiHandle(codeBlock))
+			g.httpServer.Delete(dstUrl, GenApiHandle(codeBlock))
 		// TODO: 添加更多的方法处理
 		}
 	}

@@ -30,7 +30,10 @@ apis:
             name: name
             age: age
             tags: tags
-        test: test
+        test:
+          name: wang
+          $gt:
+            age: 10
         onfail: reject
     returns:
       - "200":

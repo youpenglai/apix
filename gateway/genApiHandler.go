@@ -28,6 +28,7 @@ func (r *paramReader) Get(name, from string) (interface{}) {
 			if err = json.Unmarshal(body, &bodyJSON); err != nil {
 				return nil
 			}
+			r.bodyCache = bodyJSON
 		}
 	} else {
 		hasBody = true
@@ -72,7 +73,7 @@ var forwardFuncs = map[string]func(string, interface{} , map[string]interface{})
 			return nil, err
 		}
 
-		grpcTarget := target.(apibuilder.GRPCForward)
+		grpcTarget := target.(*apibuilder.GRPCForward)
 
 		result, err := CallService(service, grpcTarget.Method, p)
 		return result, err
@@ -86,9 +87,8 @@ var forwardFuncs = map[string]func(string, interface{} , map[string]interface{})
 			return nil, err
 		}
 
-		//redisTarget := target.(apibuilder.RedisForward)
-		CallService(service, "", p)
-		return nil, nil
+		result, err := CallService(service, "", p)
+		return result, err
 	},
 }
 
@@ -119,7 +119,7 @@ func GenApiHandle (code *apibuilder.ApiCodeBlock) (handler apiXHttp.Handler) {
 		if ret, err = code.DoForwards(params); err != nil {
 			ctx.JSON(500, map[string]interface{}{"success": false})
 		} else {
-			ctx.JSON(200, ret)
+			ctx.RawBytes(200,"application/json", ret.([]byte))
 		}
 	}
 }

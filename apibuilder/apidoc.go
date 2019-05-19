@@ -110,6 +110,10 @@ func (ma *MemberAttr) load(attrs map[string]interface{}) (err error) {
 	case []string:
 		ma.IsArray = true
 		ma.Type = t.([]string)[0]
+	case []interface{}:
+		ma.IsArray = true
+		typeVal := t.([]interface{})[0]
+		ma.Type = typeVal.(string)
 	}
 
 	requiredVal, hasRequired := attrs["required"]

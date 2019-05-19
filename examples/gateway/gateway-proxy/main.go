@@ -1,9 +1,8 @@
 package main
 
 import (
-	"github.com/youpenglai/apix/proxy"
 	"fmt"
-	"encoding/json"
+	"github.com/youpenglai/apix/proxy"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,7 +21,9 @@ func main() {
 	proxy.HandleServiceCall(proxyInst, func(call *proxy.ProxyServiceCall) (data []byte, err error) {
 		//fmt.Println("Call Service:", call.ServiceName)
 		//fmt.Println("Call method:", call.Method)
-		data, err = json.Marshal(map[string]interface{}{"success": true, "data": call.Params})
+		t := `{"name":"wang", "age": 9}`
+		//data, err = json.Marshal(map[string]interface{}{"success": true, "data": })
+		data = []byte(t)
 		return
 	})
 
